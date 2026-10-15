@@ -1,0 +1,37 @@
+services:
+  cvat_server:
+    security_opt:
+      - label=disable
+  cvat_worker_import:
+    security_opt:
+      - label=disable
+  cvat_worker_annotation:
+    security_opt:
+      - label=disable
+  cvat_worker_consensus:
+    security_opt:
+      - label=disable
+  cvat_worker_utils:
+    security_opt:
+      - label=disable
+  cvat_worker_quality_reports:
+    security_opt:
+      - label=disable
+  cvat_worker_export:
+    security_opt:
+      - label=disable
+  cvat_worker_webhooks:
+    security_opt:
+      - label=disable
+  cvat_worker_chunks:
+    security_opt:
+      - label=disable
+  cvat_vector:
+    security_opt:
+      - label=disable
+  cvat_grafana:
+    security_opt:
+      - label=disable
+  traefik:
+    security_opt:
+      - label=disable
