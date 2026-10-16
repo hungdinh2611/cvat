@@ -1,6 +1,32 @@
 /* AutoLabel controls for CVAT. The browser sends its CVAT session; no service PAT enters this script. */
-(() => {
+(async () => {
     'use strict';
+
+    // Resolve the backend workflow before installing any legacy controls or handlers.
+    try {
+        const response = await fetch('/autolabel/api/v1/vm/capabilities', {
+            credentials: 'same-origin', cache: 'no-store',
+        });
+        // Older backends have no VM endpoint. All other failures require a retry.
+        if (response.status !== 404) {
+            if (!response.ok) throw new Error(`VM capabilities: HTTP ${response.status}`);
+            const capabilities = await response.json();
+            if (typeof capabilities.enabled !== 'boolean') throw new Error('Invalid VM capabilities');
+            if (capabilities.enabled) {
+                const script = document.createElement('script');
+                script.src = '/autolabel-vm.js';
+                script.onerror = () => {
+                    window.alert('Không tải được AutoLabel VM. Kiểm tra image CVAT UI có autolabel-vm.js rồi tải lại trang.');
+                };
+                document.head.appendChild(script);
+                return;
+            }
+        }
+    } catch (error) {
+        console.error('AutoLabel workflow detection failed', error);
+        window.alert('Không xác định được luồng AutoLabel. Kiểm tra API capabilities rồi tải lại trang.');
+        return;
+    }
 
     const backend = '/autolabel/api/v1/video/jobs';
     const active = new Set(['queued', 'extracting', 'propagating']);

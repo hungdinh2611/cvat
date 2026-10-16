@@ -101,6 +101,7 @@ services:
       dockerfile: Dockerfile.ui
     volumes:
       - ./cvat-ui/autolabel-panel.js:/usr/share/nginx/html/autolabel-panel.js:ro
+      - ./cvat-ui/autolabel-vm.js:/usr/share/nginx/html/autolabel-vm.js:ro
 
   cvat_clickhouse:
     ports:
