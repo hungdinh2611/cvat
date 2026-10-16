@@ -220,7 +220,7 @@
             }
             if (panel !== openedPanel) return;
             vmCapabilities = capabilities;
-            if (capabilities.enabled) sam3Capabilities = { docked_panel: true };
+            if (capabilities.enabled) sam3Capabilities = { docked_panel: false };
             else await loadAvailableClasses();
             if (panel === openedPanel) await refresh();
         } catch (failure) {
@@ -434,7 +434,7 @@
     }
 
     function configureDock() {
-        if (!panel || !sam3Capabilities.docked_panel) return;
+        if (!panel || vmCapabilities?.enabled || !sam3Capabilities.docked_panel) return;
         const page = document.querySelector('.cvat-annotation-page');
         if (!page) return;
         page.classList.add('autolabel-docked');
@@ -527,7 +527,7 @@
             if (error) content.appendChild(button(vmText('Thử kết nối lại', 'Reconnect'), initializeWorkflow));
             return;
         }
-        if (!sam3Capabilities.docked_panel) { legacyRender(); return; }
+        if (!vmCapabilities.enabled && !sam3Capabilities.docked_panel) { legacyRender(); return; }
         configureDock();
         const content = panel.querySelector('.autolabel-content');
         content.replaceChildren();
@@ -537,7 +537,7 @@
         const collapse = button(tr('collapse'), async () => {
             collapsed = !collapsed; localStorage.setItem('autolabel-collapsed', collapsed ? '1' : '0');
         });
-        content.appendChild(collapse);
+        if (!vmCapabilities.enabled) content.appendChild(collapse);
         if (vmCapabilities.enabled) {
             const locale = el('select'); locale.setAttribute('aria-label', 'Language');
             for (const [value, name] of [['vi', 'Tiếng Việt'], ['en', 'English']]) {
@@ -547,7 +547,7 @@
             locale.onchange = () => { language = locale.value; localStorage.setItem('autolabel-language', language); render(); };
             content.appendChild(locale);
             if (error) { const alert = el('p', error, 'autolabel-error'); alert.setAttribute('role', 'alert'); content.appendChild(alert); }
-            if (!collapsed) renderVm(content);
+            renderVm(content);
             return;
         }
         const nav = el('div', undefined, 'autolabel-tabs'); nav.setAttribute('role', 'tablist');

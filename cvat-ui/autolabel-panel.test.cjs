@@ -71,6 +71,8 @@ function makeHarness(responder) {
 function makePanel(document) {
     const backdrop = new Element('div'); backdrop.className = 'autolabel-backdrop';
     const section = document.createElement('section'); section.className = 'autolabel-panel';
+    section.setAttribute('role', 'dialog');
+    section.setAttribute('aria-modal', 'true');
     const close = document.createElement('button'); close.className = 'autolabel-close';
     section.appendChild(close);
     section.appendChild(document.createElement('h2'));
@@ -235,3 +237,25 @@ test('Cancel and Retry buttons call the authenticated VM mutation endpoints', as
     assert.equal(retryRequest.options.headers['X-CSRFToken'], 'csrf+token');
 });
 
+
+test('VM workflow retains the floating dialog without changing the annotation layout', async () => {
+    const h = makeHarness(async url => {
+        if (url.endsWith('/vm/capabilities')) return { ok: true, json: async () => ({ enabled: true, pipelines: ['sam'] }) };
+        if (url.endsWith('/vm/cvat-jobs/20')) return { ok: true, json: async () => ({ job: null }) };
+        throw new Error(`unexpected request ${url}`);
+    });
+    const page = new Element('div');
+    const layoutClasses = new Set();
+    page.classList = { add: name => layoutClasses.add(name), remove: name => layoutClasses.delete(name) };
+    h.document.querySelector = selector => selector === '.cvat-annotation-page' ? page : null;
+    const state = h.api.getState(); state.cvatJobId = 20; state.panel = makePanel(h.document);
+    h.document.body.appendChild(state.panel);
+    await h.api.initializeWorkflow();
+    assert.equal(state.panel.parentElement, h.document.body);
+    assert.equal(state.panel.className, 'autolabel-backdrop');
+    assert.equal(state.panel.querySelector('section').attributes.role, 'dialog');
+    assert.equal(state.panel.querySelector('section').attributes['aria-modal'], 'true');
+    assert.equal(layoutClasses.has('autolabel-docked'), false);
+    assert.ok(state.panel.find(node => node.tagName === 'INPUT' && node.type === 'file'));
+    assert.equal(state.panel.find(node => node.tagName === 'BUTTON' && node.textContent.includes('Thu gọn')), null);
+});

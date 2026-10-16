@@ -15,7 +15,8 @@ the UI image so the browser loads the updated script.
 ## Privacy-first VM backend
 
 The panel checks `GET /autolabel/api/v1/vm/capabilities` before enabling actions.
-When `enabled` is true, it offers a source-video file picker, 1–8 unique class names,
+The VM workflow uses the existing floating modal dialog and does not dock or resize
+the annotation workspace. When `enabled` is true, it offers a source-video file picker, 1–8 unique class names,
 SAM3/SAM3.1 and the pipelines advertised by the backend. Hybrid pipelines use SAM3.
 Upload uses `POST /autolabel/api/v1/vm/jobs` with multipart `video` and JSON `options`;
 the browser supplies the multipart boundary and the panel forwards the CVAT CSRF token.
