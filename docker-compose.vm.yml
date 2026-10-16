@@ -1,0 +1,47 @@
+# Run prebuilt VM images with the matching CVAT base docker-compose.yml.
+# Do not include docker-compose.dev.yml or docker-compose.autolabel.yml.
+# Images must already contain the pinned CVAT fork and AutoLabel VM overlay.
+# Copy cvat-vm.env.example to .env.vm and set both published image references.
+services:
+  cvat_server:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+    build: !reset null
+  cvat_ui:
+    image: ${CVAT_UI_IMAGE:?Set CVAT_UI_IMAGE in .env.vm}
+    build: !reset null
+    volumes: !reset []
+  cvat_worker_import:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_annotation:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_consensus:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_utils:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_quality_reports:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_export:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+    ports: !reset []
+  cvat_worker_webhooks:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  cvat_worker_chunks:
+    image: ${CVAT_SERVER_IMAGE:?Set CVAT_SERVER_IMAGE in .env.vm}
+  autolabel_proxy:
+    image: nginx:1.27.5-alpine
+    restart: unless-stopped
+    environment:
+      AUTOLABEL_API_HOST: ${AUTOLABEL_API_HOST:-host.docker.internal}
+      AUTOLABEL_API_PORT: ${AUTOLABEL_API_PORT:-8000}
+      NGINX_ENVSUBST_FILTER: '^AUTOLABEL_API_(HOST|PORT)'
+    # Docker Desktop provides host.docker.internal. Do not override its DNS.
+    volumes:
+      - ./autolabel-vm-proxy.conf:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - cvat
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.autolabel_vm.rule: Host(`${CVAT_HOST:-localhost}`) && PathPrefix(`/autolabel/`)
+      traefik.http.routers.autolabel_vm.entrypoints: web
+      traefik.http.routers.autolabel_vm.priority: '100'
+      traefik.http.services.autolabel_vm.loadbalancer.server.port: '80'
