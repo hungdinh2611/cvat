@@ -3,6 +3,13 @@
     'use strict';
 
     const backend = '/autolabel/api/v1/video/jobs';
+    let vmCapabilities = null;
+    let vmVideo = null;
+    let vmNewVideo = false;
+    let vmRefreshSequence = 0;
+    let vmVariant = 'sam3.1';
+    let vmPipeline = 'sam';
+    const vmTerminal = new Set(['completed', 'failed', 'cancelled']);
     const active = new Set(['queued', 'extracting', 'propagating']);
     const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
     let panel = null;
@@ -176,7 +183,7 @@
         return node;
     }
 
-    async function api(path, options) {
+    async function api(path, options, base = backend) {
         const requestOptions = { ...options, credentials: 'include' };
         if (requestOptions.method && requestOptions.method.toUpperCase() !== 'GET') {
             const csrf = document.cookie.split('; ').find((part) => part.startsWith('csrftoken='));
@@ -187,7 +194,7 @@
                 };
             }
         }
-        const response = await fetch(`${backend}${path}`, requestOptions);
+        const response = await fetch(`${base}${path}`, requestOptions);
         if (!response.ok) {
             let detail = `AutoLabel HTTP ${response.status}`;
             try { detail = (await response.json()).detail || detail; } catch (_) { /* use status */ }
@@ -198,8 +205,132 @@
         return response.json();
     }
 
+    const vmApi = (path, options) => api(path, options, '/autolabel/api/v1');
+    const vmText = (vi, en) => language === 'vi' ? vi : en;
+    const vmStorageKey = () => `autolabel-vm-job-${cvatJobId}`;
+
+    async function initializeWorkflow() {
+        const openedPanel = panel;
+        try {
+            let capabilities;
+            try { capabilities = await vmApi('/vm/capabilities'); }
+            catch (failure) {
+                if (failure.status !== 404) throw failure;
+                capabilities = { enabled: false };
+            }
+            if (panel !== openedPanel) return;
+            vmCapabilities = capabilities;
+            if (capabilities.enabled) sam3Capabilities = { docked_panel: true };
+            else await loadAvailableClasses();
+            if (panel === openedPanel) await refresh();
+        } catch (failure) {
+            if (panel === openedPanel) { error = failure.message; render(); }
+        }
+    }
+
+    async function refreshVm() {
+        const sequence = ++vmRefreshSequence;
+        const openedPanel = panel;
+        const key = vmStorageKey();
+        if (vmNewVideo && !job) { render(); return; }
+        try {
+            const savedId = job?.job_id || sessionStorage.getItem(key);
+            let nextJob;
+            if (savedId) {
+                try { nextJob = await vmApi(`/vm/jobs/${encodeURIComponent(savedId)}`); }
+                catch (failure) {
+                    if (failure.status !== 404) throw failure;
+                    sessionStorage.removeItem(key);
+                }
+            }
+            if (!nextJob) nextJob = (await vmApi(`/vm/cvat-jobs/${cvatJobId}`)).job;
+            if (panel !== openedPanel || sequence !== vmRefreshSequence) return;
+            job = nextJob || null;
+            if (job) sessionStorage.setItem(key, job.job_id);
+            error = '';
+        } catch (failure) {
+            if (panel === openedPanel && sequence === vmRefreshSequence) error = failure.message;
+        }
+        if (panel === openedPanel && sequence === vmRefreshSequence) render();
+    }
+
+    async function uploadVm() {
+        if (!vmVideo) throw new Error(vmText('Chọn video cần xử lý.', 'Choose a video to process.'));
+        const classes = sequenceClasses.split(',').map(value => value.trim()).filter(Boolean);
+        if (!classes.length || classes.length > 8 || new Set(classes).size !== classes.length ||
+            classes.some(value => value.length > 128)) {
+            throw new Error(vmText('Nhập từ 1 đến 8 nhãn khác nhau, tối đa 128 ký tự mỗi nhãn.',
+                'Enter 1–8 unique class names, at most 128 characters each.'));
+        }
+        const data = new FormData();
+        data.append('video', vmVideo);
+        data.append('options', JSON.stringify({ classes, variant: vmVariant, pipeline: vmPipeline, vlm_enabled: false }));
+        const openedPanel = panel;
+        const key = vmStorageKey();
+        const uploaded = await vmApi('/vm/jobs', { method: 'POST', body: data });
+        sessionStorage.setItem(key, uploaded.job_id);
+        if (panel === openedPanel) { job = uploaded; vmVideo = null; vmNewVideo = false; }
+    }
+
+    function renderVm(content) {
+        content.appendChild(el('h3', vmText('Video có bảo vệ riêng tư', 'Privacy video workflow')));
+        if (busy) { const status = el('p', tr('loading')); status.setAttribute('role', 'status'); content.appendChild(status); }
+        content.appendChild(el('p', vmText(
+            'Video được che thông tin nhạy cảm trước khi chạy SAM. Hệ thống tạo task/job CVAT mới; nhãn không được ghi vào job đang mở.',
+            'The video is redacted before SAM runs. This creates a new CVAT task/job; labels are delivered to that job.')));
+        if (!job) {
+            const fileRow = el('label', vmText('Video nguồn', 'Source video'), 'autolabel-setting');
+            const input = el('input'); input.type = 'file'; input.accept = 'video/*'; input.disabled = busy;
+            input.onchange = () => { vmVideo = input.files?.[0] || null; };
+            fileRow.appendChild(input); content.appendChild(fileRow);
+            if (vmVideo) content.appendChild(el('p', vmVideo.name));
+            const classRow = el('label', vmText('Nhãn, phân cách bằng dấu phẩy', 'Class names, comma separated'), 'autolabel-setting');
+            const classes = el('input'); classes.value = sequenceClasses; classes.disabled = busy;
+            classes.oninput = () => { sequenceClasses = classes.value; };
+            classRow.appendChild(classes); content.appendChild(classRow);
+            const variantRow = el('label', 'SAM', 'autolabel-setting');
+            const variant = el('select'); variant.disabled = busy;
+            for (const value of ['sam3.1', 'sam3']) { const option = el('option', value); option.value = value; variant.appendChild(option); }
+            variant.value = vmVariant; variant.onchange = () => { vmVariant = variant.value; };
+            variantRow.appendChild(variant); content.appendChild(variantRow);
+            const pipelineRow = el('label', vmText('Luồng xử lý', 'Pipeline'), 'autolabel-setting');
+            const pipeline = el('select'); pipeline.disabled = busy;
+            for (const value of vmCapabilities.pipelines || ['sam']) {
+                const option = el('option', value); option.value = value; pipeline.appendChild(option);
+            }
+            pipeline.value = vmPipeline;
+            pipeline.onchange = () => { vmPipeline = pipeline.value; if (vmPipeline !== 'sam') vmVariant = 'sam3'; render(); };
+            if (vmPipeline !== 'sam') { variant.value = 'sam3'; variant.disabled = true; }
+            pipelineRow.appendChild(pipeline); content.appendChild(pipelineRow);
+            content.appendChild(button(vmText('Tải lên và chạy', 'Upload and run'), uploadVm));
+        } else {
+            const status = el('p', `${tr('status')}: ${job.status} · ${job.stage || ''}`); status.setAttribute('role', 'status'); content.appendChild(status);
+            for (const [key, vi, en] of [
+                ['privacy_frames', 'Frame đã che', 'Redacted frames'],
+                ['processed_frames', 'Frame đã xử lý', 'Processed frames'],
+                ['published_frames', 'Frame đã ghi CVAT', 'Frames published to CVAT'],
+            ]) content.appendChild(el('p', `${vmText(vi, en)}: ${job[key] ?? 0} / ${job.total_frames ?? 0}`));
+            if (job.error) { const alert = el('p', job.error, 'autolabel-error'); alert.setAttribute('role', 'alert'); content.appendChild(alert); }
+            if (job.cvat_task_id && job.cvat_job_id) {
+                const link = el('a', vmText('Mở job CVAT kết quả (hãy lưu chỉnh sửa trước)', 'Open result CVAT job (save edits first)'));
+                link.href = `/tasks/${job.cvat_task_id}/jobs/${job.cvat_job_id}`; content.appendChild(link);
+            }
+            if (!vmTerminal.has(job.status)) content.appendChild(button(vmText('Hủy xử lý', 'Cancel processing'), async () => {
+                job = await vmApi(`/vm/jobs/${encodeURIComponent(job.job_id)}/cancel`, { method: 'POST' });
+            }));
+            if (['failed', 'cancelled'].includes(job.status)) content.appendChild(button(vmText('Thử lại', 'Retry'), async () => {
+                job = await vmApi(`/vm/jobs/${encodeURIComponent(job.job_id)}/retry`, { method: 'POST' });
+            }));
+            if (vmTerminal.has(job.status)) content.appendChild(button(vmText('Xử lý video khác', 'Process another video'), async () => {
+                sessionStorage.removeItem(vmStorageKey()); job = null; vmVideo = null; vmNewVideo = true;
+            }));
+        }
+        content.appendChild(button(vmText('Làm mới', 'Refresh'), async () => {}));
+    }
+
     async function refresh() {
-        if (!panel) return;
+        if (!panel || vmCapabilities === null) return;
+        if (vmCapabilities.enabled) { await refreshVm(); return; }
         try {
             job = await api(`/cvat-jobs/${cvatJobId}`);
             if (job.manifest_sha256 && (!manifest || manifest.job_id !== job.job_id)) {
@@ -273,6 +404,7 @@
 
     async function operate(action) {
         if (busy) return;
+        ++vmRefreshSequence; // Ignore polling responses started before this action.
         busy = true;
         error = '';
         render();
@@ -389,6 +521,12 @@
 
     function render() {
         if (!panel) return;
+        if (vmCapabilities === null) {
+            const content = panel.querySelector('.autolabel-content');
+            content.replaceChildren(el('p', error || tr('loading')));
+            if (error) content.appendChild(button(vmText('Thử kết nối lại', 'Reconnect'), initializeWorkflow));
+            return;
+        }
         if (!sam3Capabilities.docked_panel) { legacyRender(); return; }
         configureDock();
         const content = panel.querySelector('.autolabel-content');
@@ -400,6 +538,18 @@
             collapsed = !collapsed; localStorage.setItem('autolabel-collapsed', collapsed ? '1' : '0');
         });
         content.appendChild(collapse);
+        if (vmCapabilities.enabled) {
+            const locale = el('select'); locale.setAttribute('aria-label', 'Language');
+            for (const [value, name] of [['vi', 'Tiếng Việt'], ['en', 'English']]) {
+                const option = el('option', name); option.value = value; locale.appendChild(option);
+            }
+            locale.value = language;
+            locale.onchange = () => { language = locale.value; localStorage.setItem('autolabel-language', language); render(); };
+            content.appendChild(locale);
+            if (error) { const alert = el('p', error, 'autolabel-error'); alert.setAttribute('role', 'alert'); content.appendChild(alert); }
+            if (!collapsed) renderVm(content);
+            return;
+        }
         const nav = el('div', undefined, 'autolabel-tabs'); nav.setAttribute('role', 'tablist');
         for (const key of ['run', 'review', 'claude']) {
             const tab = el('button', tr(key)); tab.setAttribute('role', 'tab');
@@ -844,6 +994,8 @@
         cvatTaskId = taskId;
         cvatJobId = jobId;
         job = null;
+        vmCapabilities = null; vmVideo = null; vmNewVideo = false; vmPipeline = 'sam'; vmVariant = 'sam3.1';
+        sam3Capabilities = { vlm_box_rescue: false };
         queue = null;
         manifest = null;
         error = '';
@@ -869,8 +1021,7 @@
         document.body.appendChild(panel);
         configureDock();
         render();
-        refresh();
-        loadAvailableClasses();
+        initializeWorkflow();
     }
 
     function closePanel() {
@@ -904,7 +1055,8 @@
     window.setInterval(() => {
         syncOverlay();
         mountButton();
-        if (panel && job && (active.has(job.status) || ['queued', 'running'].includes(boxRescueState.status)) && !busy &&
+        if (panel && job && (vmCapabilities?.enabled ? !vmTerminal.has(job.status) :
+            (active.has(job.status) || ['queued', 'running'].includes(boxRescueState.status))) && !busy &&
             !(panel.contains(document.activeElement) && ['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))) refresh();
     }, 1800);
     // Scoped combinations: never steal plain CVAT shortcuts or typing in an input.
