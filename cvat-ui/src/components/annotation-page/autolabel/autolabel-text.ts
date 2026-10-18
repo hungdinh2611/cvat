@@ -17,6 +17,12 @@ const T = {
     privacyNote: 'The video is redacted before any model runs. Results go to a new CVAT task and job; ' +
         'the job you have open is never overwritten.',
     video: 'Source video',
+    sourceThisJob: 'This job\'s video',
+    sourceUpload: 'Upload a video',
+    sourceThisJobHint: 'AutoLabel reads the video this task was created from. Nothing is uploaded again.',
+    sourceMissing: 'This job has no stored source video. Upload the video instead.',
+    starting: 'Preparing the job video…',
+    submitThisJob: 'Run on this job\'s video',
     videoHint: 'Drop a video here or click to choose one',
     videoRequired: 'Choose a video to process',
     classes: 'Classes to detect',

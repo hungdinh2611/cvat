@@ -98,7 +98,7 @@ function AutoLabelPanel({ cvatJobID }: { cvatJobID: number }): JSX.Element {
                                     onSync={syncNow}
                                     onOpenPrivacy={() => setPrivacyOpen(true)}
                                 />
-                            ) : <UploadForm capabilities={capabilities} onCreated={replaceJob} />,
+                            ) : <UploadForm capabilities={capabilities} cvatJobID={cvatJobID} onCreated={replaceJob} />,
                         },
                         {
                             key: 'review',

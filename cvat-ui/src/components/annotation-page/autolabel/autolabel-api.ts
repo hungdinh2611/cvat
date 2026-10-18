@@ -41,6 +41,8 @@ export interface VmJob {
     publication_version?: number;
     frame_states?: number[];
     vlm_status?: string;
+    // Set when the run was started from the video already stored in this CVAT job.
+    origin_cvat_job_id?: number | null;
 }
 
 export interface ReviewTrack {
@@ -100,6 +102,13 @@ export interface PrivacyTrack {
     keyframes: { frame: number; box: [number, number, number, number] }[];
 }
 
+export interface RunOptions {
+    classes: string[];
+    variant: string;
+    pipeline: VmPipeline;
+    vlm_enabled: boolean;
+}
+
 export const TERMINAL_STATUSES = new Set<VmJobStatus>(['completed', 'failed', 'cancelled']);
 
 export class AutoLabelError extends Error {
@@ -142,7 +151,7 @@ export async function request<T>(path: string, method = 'GET', body?: unknown): 
 
 // fetch() cannot report upload progress, so large videos go through XHR.
 export function uploadVideo(
-    video: File, options: object, onProgress: (percent: number) => void,
+    video: File, options: RunOptions, onProgress: (percent: number) => void,
 ): Promise<VmJob> {
     const data = new FormData();
     data.append('video', video);
@@ -173,6 +182,10 @@ export const vmApi = {
     capabilities: () => request<VmCapabilities>('/vm/capabilities'),
     job: (jobID: string) => request<VmJob>(`/vm/jobs/${encodeURIComponent(jobID)}/processing`),
     findByCvatJob: (cvatJobID: number) => request<{ job: VmJob | null }>(`/vm/cvat-jobs/${cvatJobID}`),
+    // The server reads the video CVAT already stores for this job, so nothing is uploaded again.
+    startFromCvatJob: (cvatJobID: number, options: RunOptions) => request<VmJob>(
+        `/vm/cvat-jobs/${cvatJobID}/runs`, 'POST', options,
+    ),
     cancel: (jobID: string) => request<VmJob>(`/vm/jobs/${encodeURIComponent(jobID)}/cancel`, 'POST'),
     retry: (jobID: string) => request<VmJob>(`/vm/jobs/${encodeURIComponent(jobID)}/retry`, 'POST'),
     videoURL: (jobID: string) => `${AUTOLABEL_API}/vm/jobs/${encodeURIComponent(jobID)}/video`,

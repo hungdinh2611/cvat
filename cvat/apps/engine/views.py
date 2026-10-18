@@ -2314,6 +2314,32 @@ class JobViewSet(
         self.get_object()  # Enforce the same OPA scope as updating job annotations.
         return Response({"allowed": True})
 
+    @extend_schema(
+        methods=["GET"],
+        summary="Download the original video of the job's task for AutoLabel",
+        responses={
+            "200": OpenApiResponse(description="The original uploaded video file"),
+            "409": OpenApiResponse(description="The task has no locally stored source video"),
+        },
+    )
+    @action(detail=True, methods=["GET"], url_path="autolabel-source")
+    def autolabel_source(self, request: ExtendedRequest, pk: int):
+        # Lets AutoLabel start from media already in CVAT instead of a second upload.
+        # Same scope as reading frames; frame rate and timestamps stay exact.
+        db_job = self.get_object()
+        db_data = db_job.segment.task.data
+        db_video = getattr(db_data, "video", None)
+        if db_video is None or not db_video.path:
+            return Response({"detail": "AutoLabel needs a task created from a video file"}, status=409)
+        if db_data.storage not in (StorageChoice.LOCAL, StorageChoice.SHARE):
+            return Response({"detail": "The task video is in cloud storage; upload it to AutoLabel instead"},
+                status=409)
+        root = os.path.realpath(db_data.get_raw_data_dirname())
+        path = os.path.realpath(os.path.join(root, db_video.path))
+        if os.path.commonpath([root, path]) != root or not os.path.isfile(path):
+            return Response({"detail": "The original task video is no longer stored by CVAT"}, status=409)
+        return sendfile(request, path, attachment=True, attachment_filename=os.path.basename(path))
+
     @action(detail=True, methods=["GET", "POST"], url_path="autolabel-stream")
     def autolabel_stream(self, request: ExtendedRequest, pk: int):
         self.get_object()
