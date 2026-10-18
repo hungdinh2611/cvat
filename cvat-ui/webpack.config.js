@@ -42,7 +42,8 @@ module.exports = (env, argv = {}) => {
     }
 
     const host = process.env.CVAT_UI_HOST ?? 'localhost';
-    const port = process.env.CVAT_UI_PORT ?? 3000;
+    const port = process.env.CVAT_UI_PORT ?? env?.UI_PORT ?? 3000;
+    const apiURL = process.env.CVAT_API_URL ?? env?.API_URL;
     return {
         target: 'web',
         mode: isDevMode ? 'development' : 'production',
@@ -86,9 +87,9 @@ module.exports = (env, argv = {}) => {
             proxy: [{
                 context: (param) =>
                     param.match(
-                        /\/api\/.*|analytics\/.*|static\/.*|admin(?:\/(.*))?.*|profiler(?:\/(.*))?.*|documentation\/.*|django-rq(?:\/(.*))?/gm,
+                        /\/api\/.*|\/autolabel\/.*|analytics\/.*|static\/.*|admin(?:\/(.*))?.*|profiler(?:\/(.*))?.*|documentation\/.*|django-rq(?:\/(.*))?/gm,
                     ),
-                target: env && env.API_URL,
+                target: apiURL,
                 secure: false,
                 changeOrigin: true,
                 onProxyReq: (proxyReq) => {

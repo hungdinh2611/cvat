@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack --config ./webpack.config.js",
     "start": "webpack serve --env API_URL=http://localhost:7000 --config ./webpack.config.js --mode=development",
+    "start:remote": "webpack serve --env API_URL=https://t116.tuienn.me --env UI_PORT=8080 --config ./webpack.config.js --mode=development",
     "lint": "eslint './src/**/*.{ts,tsx}'",
     "lint:fix": "eslint './src/**/*.{ts,tsx}' --fix"
   },
