@@ -15,6 +15,7 @@ import { ActiveControl, ToolsBlockerState } from 'reducers';
 import { RectDrawingMethod } from 'cvat-canvas-wrapper';
 import { registerComponentShortcuts } from 'actions/shortcuts-actions';
 import AnnotationMenuComponent from 'components/annotation-page/top-bar/annotation-menu';
+import AutoLabelLauncher from 'components/annotation-page/autolabel/autolabel-launcher';
 import CVATTooltip from 'components/common/cvat-tooltip';
 import { ShortcutScope } from 'utils/enums';
 import { subKeyMap } from 'utils/component-subkeymap';
@@ -120,6 +121,7 @@ function LeftGroup(props: Props): JSX.Element {
             <Col className='cvat-annotation-header-left-group'>
                 <AnnotationMenuComponent />
                 <SaveAnnotationsButton />
+                <AutoLabelLauncher />
                 <CVATTooltip overlay={`Undo: ${undoAction} ${undoShortcut}`}>
                     <Button
                         style={{ pointerEvents: undoAction ? 'initial' : 'none', opacity: undoAction ? 1 : 0.5 }}
