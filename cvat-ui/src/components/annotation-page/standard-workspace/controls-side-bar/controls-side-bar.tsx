@@ -17,6 +17,7 @@ import { LabelType } from 'cvat-core-wrapper';
 import { ShortcutScope } from 'utils/enums';
 import { registerComponentShortcuts } from 'actions/shortcuts-actions';
 import { subKeyMap } from 'utils/component-subkeymap';
+import AIBoxControl from 'components/annotation-page/autolabel/ai-box-control';
 import ControlVisibilityObserver, {
     ExtraControlsControl, ContainerHeightContext,
 } from './control-visibility-observer';
@@ -447,6 +448,11 @@ export default function ControlsSideBarComponent(props: Props): JSX.Element {
                             isDrawing={activeControl === ActiveControl.DRAW_RECTANGLE}
                             disabled={controlsDisabled}
                         />
+                    )
+                }
+                {
+                    rectangleControlVisible && (
+                        <AIBoxControl canvasInstance={canvasInstance} disabled={controlsDisabled} />
                     )
                 }
                 {

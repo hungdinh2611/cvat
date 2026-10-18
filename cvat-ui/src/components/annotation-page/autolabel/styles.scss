@@ -211,3 +211,42 @@
         font-size: 18px;
     }
 }
+
+.cvat-ai-box-popover-content {
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 0.5;
+    width: 320px;
+}
+
+.cvat-ai-box-field-label {
+    margin-top: $grid-unit-size;
+    font-size: 12px;
+}
+
+.cvat-ai-box-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $grid-unit-size;
+    margin-top: $grid-unit-size;
+}
+
+.cvat-ai-box-history {
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: $grid-unit-size;
+    border-top: 1px solid $border-color-1;
+    padding-top: $grid-unit-size;
+}
+
+.cvat-ai-box-exchange {
+    display: flex;
+    flex-direction: column;
+    gap: $grid-unit-size * 0.5;
+    padding: $grid-unit-size * 0.5 0;
+    font-size: 12px;
+
+    &:not(:last-child) {
+        border-bottom: 1px dashed $border-color-1;
+    }
+}

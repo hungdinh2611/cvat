@@ -85,6 +85,16 @@ export interface VlmResult {
     cache_hit?: boolean;
 }
 
+export interface RefineResult {
+    found: boolean;
+    // Normalized xyxy on the source frame, or null when the VLM saw no matching object.
+    bbox: [number, number, number, number] | null;
+    reason: string;
+    source_frame: number;
+    model: string;
+    cache_hit: boolean;
+}
+
 export interface VlmSettings {
     model: string;
     endpoint: string;
@@ -208,6 +218,9 @@ export const vmApi = {
     vlmDecision: (jobID: string, resultID: string, index: number, accept: boolean) => request<VlmResult>(
         `/vm/jobs/${encodeURIComponent(jobID)}/vlm/${encodeURIComponent(resultID)}/decision`, 'POST', { index, accept },
     ),
+    refineBox: (jobID: string, body: {
+        source_frame: number; label: string; bbox: [number, number, number, number]; instruction: string;
+    }) => request<RefineResult>(`/vm/jobs/${encodeURIComponent(jobID)}/vlm/refine`, 'POST', body),
     bindVlmProfile: (jobID: string) => request<VmJob>(`/vm/jobs/${encodeURIComponent(jobID)}/vlm/profile`, 'POST'),
     vlmSettings: () => request<VlmSettings>('/settings/vlm'),
     saveVlmSettings: (body: { base_url: string; model: string; api_key?: string }) => request<VlmSettings>(
