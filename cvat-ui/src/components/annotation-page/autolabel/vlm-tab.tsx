@@ -19,7 +19,7 @@ import {
 
 import CVATTooltip from 'components/common/cvat-tooltip';
 import {
-    ProposalStatus, VlmProposal, VlmResult, VmJob, bridge, vmApi,
+    AutoLabelError, ProposalStatus, VlmProposal, VlmResult, VmJob, bridge, vmApi,
 } from './autolabel-api';
 import T from './autolabel-text';
 import {
@@ -59,6 +59,8 @@ function VlmTab({
     const [overlay, setOverlay] = useState<OverlayBox | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [keyConfigured, setKeyConfigured] = useState<boolean | null>(null);
+    // Runs snapshot VLM settings at creation; older runs need an explicit apply after a key is saved.
+    const [needsProfile, setNeedsProfile] = useState(false);
     const [isBusy, run] = useAction();
     useProposalOverlay(overlay, currentFrame);
 
@@ -92,7 +94,22 @@ function VlmTab({
 
     const ask = (): Promise<void> => run('ask', async () => {
         const status = await requireSavedAnnotations();
-        show(await vmApi.askVlm(job.job_id, status.frame));
+        try {
+            show(await vmApi.askVlm(job.job_id, status.frame));
+            setNeedsProfile(false);
+        } catch (failure) {
+            if (failure instanceof AutoLabelError && failure.status === 409 && job.status === 'completed') {
+                setNeedsProfile(true);
+                return;
+            }
+            throw failure;
+        }
+    });
+
+    const applyProfile = (): Promise<void> => run('profile', async () => {
+        await vmApi.bindVlmProfile(job.job_id);
+        setNeedsProfile(false);
+        message.success(T.profileApplied);
     });
 
     const decide = (result: VlmResult, index: number, accept: boolean): Promise<void> => run(
@@ -123,6 +140,19 @@ function VlmTab({
                 <Text type='secondary'>{`${T.vlmAuditLabel} `}</Text>
                 <VlmStatusTag status={job.vlm_status} />
             </div>
+            {needsProfile && keyConfigured !== false && (
+                <Alert
+                    type='warning'
+                    showIcon
+                    className='cvat-autolabel-block'
+                    message={T.needsProfile}
+                    action={(
+                        <Button size='small' type='primary' loading={isBusy('profile')} onClick={applyProfile}>
+                            {T.applyProfile}
+                        </Button>
+                    )}
+                />
+            )}
             {keyConfigured === false && (
                 <Alert
                     type='warning'
@@ -148,10 +178,7 @@ function VlmTab({
                     <CVATTooltip overlay={T.profileHint}>
                         <Button
                             loading={isBusy('profile')}
-                            onClick={() => run('profile', async () => {
-                                await vmApi.bindVlmProfile(job.job_id);
-                                message.success(T.profileApplied);
-                            })}
+                            onClick={applyProfile}
                         >
                             {T.applyProfile}
                         </Button>

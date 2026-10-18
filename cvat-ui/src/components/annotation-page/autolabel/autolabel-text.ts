@@ -122,6 +122,8 @@ const T = {
     profileHint: 'Runs keep the VLM settings captured when they were created. After changing settings, apply them to this run.',
     applyProfile: 'Apply VLM settings to this run',
     profileApplied: 'Current VLM settings applied to this run',
+    needsProfile: 'This run still uses the VLM settings from when it was created. ' +
+        'Apply your current settings to this run, then ask again.',
     savedResults: 'Saved results',
     noResults: 'No VLM requests yet',
     noProposals: 'The VLM suggested no boxes for this frame',

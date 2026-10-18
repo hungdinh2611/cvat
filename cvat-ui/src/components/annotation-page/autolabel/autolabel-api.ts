@@ -129,7 +129,9 @@ async function errorFrom(response: Response): Promise<AutoLabelError> {
     let detail = `AutoLabel HTTP ${response.status}`;
     try {
         const payload = await response.json();
-        if (typeof payload.detail === 'string') detail = payload.detail;
+        // Cloudflare answers for the origin while the AutoLabel service restarts; that is not an app error.
+        if (payload.cloudflare_error) detail = 'The AutoLabel server is temporarily unreachable. Retry in a minute.';
+        else if (typeof payload.detail === 'string') detail = payload.detail;
     } catch {
         // Keep the HTTP status as the message.
     }
