@@ -74,6 +74,8 @@ export interface OrientationVisibility {
 }
 
 export interface Configuration {
+    lowMemory3D: boolean;
+    detailedObject: boolean;
     colorBy: string;
     shapeOpacity: number;
     outlinedBorders: string | false;
@@ -194,6 +196,7 @@ export class Canvas3dModelImpl extends MasterImpl implements Canvas3dModel {
                 enabled: false,
             },
             configuration: {
+                lowMemory3D: false, detailedObject: false,
                 colorBy: 'Label',
                 shapeOpacity: 40,
                 outlinedBorders: false,
@@ -402,6 +405,8 @@ export class Canvas3dModelImpl extends MasterImpl implements Canvas3dModel {
     }
 
     public configure(configuration: Partial<Configuration>): void {
+        if (typeof configuration.lowMemory3D === 'boolean') this.data.configuration.lowMemory3D = configuration.lowMemory3D;
+        if (typeof configuration.detailedObject === 'boolean') this.data.configuration.detailedObject = configuration.detailedObject;
         if (typeof configuration.shapeOpacity === 'number') {
             this.data.configuration.shapeOpacity = Math.max(0, Math.min(configuration.shapeOpacity, 100));
         }

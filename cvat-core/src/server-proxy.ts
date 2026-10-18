@@ -1743,8 +1743,14 @@ async function getImageContext(jid: number, frame: number): Promise<ArrayBuffer>
     }
 }
 
-async function getData(jid: number, chunk: number, quality: ChunkQuality): Promise<ArrayBuffer> {
+async function getData(jid: number, chunk: number, quality: ChunkQuality, signal?: AbortSignal): Promise<ArrayBuffer> {
     const { backendAPI } = config;
+    if (signal) {
+        const params = new URLSearchParams({ ...enableOrganization(), quality, type: 'chunk', index: String(chunk) });
+        const response = await fetch(`${backendAPI}/jobs/${jid}/data?${params}`, { signal, credentials: 'include' });
+        if (!response.ok) throw new Error(`3D chunk download HTTP ${response.status}`);
+        return response.arrayBuffer();
+    }
     const pageWasVisible = isPageVisible();
     const pageVisibilityVersionAtStart = pageVisibilityCounter;
 

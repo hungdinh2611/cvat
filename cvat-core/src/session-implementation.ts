@@ -297,8 +297,9 @@ export function implementJob(Job: typeof JobClass): typeof JobClass {
         value: function contextImageImplementation(
             this: JobClass,
             frameId: Parameters<typeof JobClass.prototype.frames.contextImage>[0],
+            signal?: AbortSignal,
         ): ReturnType<typeof JobClass.prototype.frames.contextImage> {
-            return getContextImage(this.id, frameId, (frame) => this.frames.contextImageData(frame));
+            return getContextImage(this.id, frameId, (frame) => this.frames.contextImageData(frame), signal);
         },
     });
 

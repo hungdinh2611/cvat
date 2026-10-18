@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 import React, { useEffect } from 'react';
+import { useDispatch, useStore } from 'react-redux';
 import Layout from 'antd/lib/layout';
 import Spin from 'antd/lib/spin';
 import notification from 'antd/lib/notification';
@@ -23,8 +24,9 @@ import StatisticsModalComponent from 'components/annotation-page/top-bar/statist
 import AnnotationTopBarContainer from 'containers/annotation-page/top-bar/top-bar';
 import PolySimplifyController from 'containers/annotation-page/standard-workspace/poly-simplify-controller';
 import AudioAnnotationPage from 'audio/components/annotation-page/audio-annotation-page';
-import { Workspace } from 'reducers';
+import { CombinedState, Workspace } from 'reducers';
 import { usePrevious } from 'utils/hooks';
+import { installAutoLabelBridge } from 'utils/autolabel-vm-bridge';
 import EventRecorder from 'utils/event-recorder';
 import { readLatestFrame } from 'utils/remember-latest-frame';
 import { EventScope } from 'cvat-core/src/enums';
@@ -48,6 +50,12 @@ export default function AnnotationPageComponent(props: Props): JSX.Element {
         job, fetching, annotationsInitialized, workspace, frameNumber,
         getJob, closeJob, saveLogs, changeFrame,
     } = props;
+    const progressiveDispatch = useDispatch();
+    const progressiveStore = useStore<CombinedState>();
+    useEffect(() => {
+        if (!job) return undefined;
+        return installAutoLabelBridge(job, changeFrame, progressiveDispatch, progressiveStore.getState);
+    }, [job, changeFrame]);
     const prevJob = usePrevious(job);
     const prevFetching = usePrevious(fetching);
 

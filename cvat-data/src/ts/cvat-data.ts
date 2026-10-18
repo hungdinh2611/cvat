@@ -439,3 +439,6 @@ export class FrameDecoder {
         ).sort((a, b) => a - b);
     }
 }
+
+export { LowMemory3DFrames, Stale3DRequest } from './low-memory3d';
+export { Context3DCache } from './context3d';

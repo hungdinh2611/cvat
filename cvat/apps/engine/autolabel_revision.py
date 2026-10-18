@@ -18,6 +18,16 @@ def guarded_create(
     with transaction.atomic():
         job_model.objects.select_for_update().get(pk=job_id)
         current = get_annotations(job_id)
+        try:
+            from cvat.apps.engine.models import AutoLabelStreamState, AutoLabelStreamOperation
+        except ImportError:
+            vm = False
+        else:
+            vm = AutoLabelStreamState.objects.filter(job_id=job_id).exists()
+        operation = "proposal:" + proposal_id
+        if vm and AutoLabelStreamOperation.objects.filter(job_id=job_id, operation_id=operation).exists():
+            # A later human deletion must not be undone by a lost-response retry.
+            return 200, {**current, "autolabel_revision": annotation_revision(current)}
         identity = "vlm-proposal:" + proposal_id
         # A lost HTTP response can be retried with the original content token.
         if any(any(a.get("value") == identity for a in t.get("attributes", [])) for t in current.get("tracks", [])):
@@ -27,5 +37,8 @@ def guarded_create(
         if not any(any(a.get("value") == identity for a in t.get("attributes", [])) for t in data.get("tracks", [])):
             return 400, {"detail": "Proposal identity must be stored in the new track"}
         patch_annotations(job_id, data, "create")
+        if vm:
+            AutoLabelStreamOperation.objects.create(job_id=job_id, operation_id=operation,
+                digest=hashlib.sha256(proposal_id.encode()).hexdigest())
         updated = get_annotations(job_id)
         return 200, {**updated, "autolabel_revision": annotation_revision(updated)}

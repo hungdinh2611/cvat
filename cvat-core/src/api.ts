@@ -350,6 +350,8 @@ function build(): CVATCore {
             set requestsStatusDelay(value) {
                 config.requestsStatusDelay = value;
             },
+            get lowMemory3D() { return config.lowMemory3D; },
+            set lowMemory3D(value: boolean) { config.lowMemory3D = !!value; },
             get jobMetaDataReloadPeriod() {
                 return config.jobMetaDataReloadPeriod;
             },

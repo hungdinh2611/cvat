@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { PCDLoader } from 'three/examples/jsm/loaders/PCDLoader';
 import CameraControls from 'camera-controls';
+import { CloudRequest } from './pointcloud-client';
 import { Canvas3dController } from './canvas3dController';
 import { Listener, Master } from './master';
 import consts from './consts';
@@ -23,6 +24,7 @@ import { disposeScene } from './utils';
 export interface Canvas3dView {
     html(): ViewsDOM;
     render(): void;
+    destroy(): void;
     keyControls(keys: KeyboardEvent): void;
     focusObjectByClientId(clientID: number, animate?: boolean): void;
 }
@@ -162,7 +164,7 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
     private get selectedCuboid(): CuboidModel | null {
         const { clientID } = this.model.data.activeElement;
         if (clientID !== null) {
-            return this.drawnObjects[+clientID].cuboid || null;
+            return this.drawnObjects[+clientID]?.cuboid || null;
         }
 
         return null;
@@ -174,6 +176,66 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
 
     private get mode(): Mode {
         return this.controller.mode;
+    }
+
+    private cloudRequest = new CloudRequest();
+    private sceneGeneration = 0;
+    private destroyed = false;
+    private lowProfile = '';
+    private listeners: Array<() => void> = [];
+    private lastRender = 0;
+    private lastMeasure = 0;
+
+    private listen(target: EventTarget, name: string, callback: any, options?: any): void {
+        target.addEventListener(name, callback, options);
+        this.listeners.push(() => target.removeEventListener(name, callback, options));
+    }
+
+    public destroy(): void {
+        if (this.destroyed) return;
+        this.destroyed = true; ++this.sceneGeneration; this.cloudRequest.cancel();
+        this.listeners.splice(0).forEach((remove) => remove());
+        this.clearScene(); this.cube.dispose();
+        for (const view of Object.values(this.views)) {
+            view.controls?.dispose(); view.renderer.dispose(); view.renderer.forceContextLoss();
+        }
+    }
+
+    private async loadBoundedCloud(generation: number): Promise<void> {
+        try {
+            const config = this.model.data.configuration;
+            let focus;
+            const active = this.model.data.objects.find((row) => this.model.data.activeElement.clientID !== null &&
+                String(row.clientID) === String(this.model.data.activeElement.clientID));
+            if (config.detailedObject && active?.points.length >= 9) {
+                const p = active.points;
+                const m = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(
+                    new THREE.Euler(p[3], p[4], p[5]),
+                )).transpose().elements;
+                focus = { center: p.slice(0, 3), size: p.slice(6, 9).map(Math.abs),
+                    inverseRotation: [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]] };
+            }
+            const { cloud, stats } = await this.cloudRequest.parse(this.model.data.image.imageData,
+                config.detailedObject ? 500000 : 200000, focus);
+            // Drag geometry is committed to ObjectState on mouse-up. Rebuilding
+            // while EDIT/DRAW is active would discard that uncommitted geometry.
+            while (generation === this.sceneGeneration && !this.destroyed && this.model.mode !== Mode.IDLE) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            if (generation !== this.sceneGeneration || this.destroyed) {
+                cloud.geometry.dispose(); (cloud.material as THREE.Material).dispose(); return;
+            }
+            // Keep the existing scene editable while a detail worker is running.
+            // Swap synchronously only after the replacement is ready.
+            this.clearScene(); this.onSceneImageLoaded(cloud); this.model.updateCanvasObjects();
+            if (this.selectedCuboid) this.updateSideViewsZoom();
+            window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail: stats }));
+            this.dispatchEvent(new CustomEvent('canvas.setup'));
+        } catch (error) {
+            if (generation === this.sceneGeneration && !this.destroyed) this.onError(error, 'data fetching');
+        } finally {
+            if (generation === this.sceneGeneration && !this.destroyed) this.model.unlockFrameUpdating();
+        }
     }
 
     public constructor(model: Canvas3dModel & Master, controller: Canvas3dController) {
@@ -332,7 +394,7 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             });
         });
 
-        canvasPerspectiveView.addEventListener('contextmenu', (e: MouseEvent): void => {
+        this.listen(canvasPerspectiveView,'contextmenu', (e: MouseEvent): void => {
             if (this.model.data.activeElement.clientID !== null) {
                 this.dispatchEvent(
                     new CustomEvent('canvas.contextmenu', {
@@ -374,8 +436,8 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             }
         });
 
-        canvasPerspectiveView.addEventListener('mousedown', this.onPerspectiveDrag);
-        window.document.addEventListener('mouseup', () => {
+        this.listen(canvasPerspectiveView,'mousedown', this.onPerspectiveDrag);
+        this.listen(window.document,'mouseup', () => {
             this.disablePerspectiveDragging();
             if (this.isPerspectiveBeingDragged && this.mode !== Mode.DRAG_CANVAS) {
                 // call this body only of drag was activated inside the canvas, but not globally
@@ -383,22 +445,22 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             }
         });
 
-        canvasTopView.addEventListener('mousedown', this.startAction.bind(this, 'top'));
-        canvasSideView.addEventListener('mousedown', this.startAction.bind(this, 'side'));
-        canvasFrontView.addEventListener('mousedown', this.startAction.bind(this, 'front'));
+        this.listen(canvasTopView,'mousedown', this.startAction.bind(this, 'top'));
+        this.listen(canvasSideView,'mousedown', this.startAction.bind(this, 'side'));
+        this.listen(canvasFrontView,'mousedown', this.startAction.bind(this, 'front'));
 
-        canvasTopView.addEventListener('mousemove', this.moveAction.bind(this, 'top'));
-        canvasSideView.addEventListener('mousemove', this.moveAction.bind(this, 'side'));
-        canvasFrontView.addEventListener('mousemove', this.moveAction.bind(this, 'front'));
+        this.listen(canvasTopView,'mousemove', this.moveAction.bind(this, 'top'));
+        this.listen(canvasSideView,'mousemove', this.moveAction.bind(this, 'side'));
+        this.listen(canvasFrontView,'mousemove', this.moveAction.bind(this, 'front'));
 
-        canvasTopView.addEventListener('mouseup', this.completeActions.bind(this));
-        canvasTopView.addEventListener('mouseleave', this.completeActions.bind(this));
-        canvasSideView.addEventListener('mouseup', this.completeActions.bind(this));
-        canvasSideView.addEventListener('mouseleave', this.completeActions.bind(this));
-        canvasFrontView.addEventListener('mouseup', this.completeActions.bind(this));
-        canvasFrontView.addEventListener('mouseleave', this.completeActions.bind(this));
+        this.listen(canvasTopView,'mouseup', this.completeActions.bind(this));
+        this.listen(canvasTopView,'mouseleave', this.completeActions.bind(this));
+        this.listen(canvasSideView,'mouseup', this.completeActions.bind(this));
+        this.listen(canvasSideView,'mouseleave', this.completeActions.bind(this));
+        this.listen(canvasFrontView,'mouseup', this.completeActions.bind(this));
+        this.listen(canvasFrontView,'mouseleave', this.completeActions.bind(this));
 
-        canvasPerspectiveView.addEventListener('mousemove', (event: MouseEvent): void => {
+        this.listen(canvasPerspectiveView,'mousemove', (event: MouseEvent): void => {
             event.preventDefault();
             this.isCtrlDown = event.ctrlKey;
             if (this.mode === Mode.DRAG_CANVAS) return;
@@ -410,7 +472,7 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             this.hoverNeedsUpdate = true;
         });
 
-        canvasPerspectiveView.addEventListener('click', (e: MouseEvent): void => {
+        this.listen(canvasPerspectiveView,'click', (e: MouseEvent): void => {
             e.preventDefault();
             const selectionIsBlocked = ![Mode.GROUP, Mode.MERGE, Mode.SPLIT, Mode.IDLE].includes(this.mode) ||
                 !this.views.perspective.rayCaster ||
@@ -478,7 +540,7 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             }
         });
 
-        canvasPerspectiveView.addEventListener('dblclick', (e: MouseEvent): void => {
+        this.listen(canvasPerspectiveView,'dblclick', (e: MouseEvent): void => {
             e.preventDefault();
             if (this.mode !== Mode.DRAW) {
                 const { perspective: viewType } = this.views;
@@ -625,7 +687,7 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
         this.views.front.controls.enabled = false;
 
         BOTTOM_VIEWS.forEach((view: ViewType): void => {
-            this.views[view].renderer.domElement.addEventListener(
+            this.listen(this.views[view].renderer.domElement,
                 'wheel',
                 (event: WheelEvent): void => {
                     event.preventDefault();
@@ -1343,6 +1405,13 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
     }
 
     public notify(model: Canvas3dModel & Master, reason: UpdateReasons): void {
+        if (this.destroyed) return;
+        if (reason === UpdateReasons.SHAPE_ACTIVATED && model.data.configuration.lowMemory3D &&
+            model.data.configuration.detailedObject && model.data.image && !this.controller.imageIsDeleted) {
+            const generation = ++this.sceneGeneration;
+            this.cloudRequest.cancel();
+            void this.loadBoundedCloud(generation); return;
+        }
         const resetColor = (list: ObjectState[]): void => {
             list.forEach((state: ObjectState) => {
                 const { clientID } = state;
@@ -1355,10 +1424,19 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
 
         if (reason === UpdateReasons.IMAGE_CHANGED) {
             this.statesToBeGrouped = [];
-            this.clearScene();
+            const generation = ++this.sceneGeneration;
+            this.cloudRequest.cancel();
+            if (model.data.configuration.lowMemory3D && model.data.image && !this.controller.imageIsDeleted) {
+                this.lowProfile = JSON.stringify({ lowMemory3D: true, detailedObject: model.data.configuration.detailedObject });
+                void this.loadBoundedCloud(generation); return;
+            }
 
             const onPCDLoadSuccess = (points: any): void => {
+                if (generation !== this.sceneGeneration || this.destroyed) {
+                    points.geometry.dispose(); points.material.dispose(); return;
+                }
                 try {
+                    this.clearScene();
                     this.onSceneImageLoaded(points);
                     model.updateCanvasObjects();
                 } finally {
@@ -1370,8 +1448,9 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             try {
                 if (model.data.image) {
                     const loader = new PCDLoader();
-                    this.views.perspective.renderer.dispose();
+                    // Renderer survives frame changes; disposed only when the canvas closes.
                     if (this.controller.imageIsDeleted) {
+                        this.clearScene();
                         try {
                             this.render();
                             const [container] = window.document.getElementsByClassName('cvat-canvas-container');
@@ -1401,10 +1480,12 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
                         }
                     } else {
                         model.data.image.imageData.arrayBuffer().then((data) => {
+                            if (generation !== this.sceneGeneration || this.destroyed) return;
                             const defaultImpl = console.error;
                             // loader.parse will throw some errors to console when nan values are in PCD file
                             // there is not way to prevent it, because three.js opinion is that nan values
                             // in input data is incorrect
+                            const parseStarted = performance.now();
                             let cloud = null;
                             try {
                                 console.error = () => { };
@@ -1484,6 +1565,10 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
                             }
 
                             cloud.geometry.computeBoundingSphere();
+                            window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail: {
+                                stage: 'pointcloud', low_memory: false, parse_ms: performance.now() - parseStarted,
+                                input_points: position.length / 3, displayed_points: position.length / 3, lod: false,
+                            } }));
                             onPCDLoadSuccess(cloud);
                         });
                         const [overlay] = window.document.getElementsByClassName('cvat_3d_canvas_deleted_overlay');
@@ -1498,6 +1583,17 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             }
         } else if (reason === UpdateReasons.CONFIG_UPDATED) {
             const config = { ...model.data.configuration };
+            const profile = JSON.stringify({ lowMemory3D: config.lowMemory3D, detailedObject: config.detailedObject });
+            if (this.lowProfile && !config.lowMemory3D) {
+                this.lowProfile = '';
+                this.notify(model, UpdateReasons.IMAGE_CHANGED); return;
+            }
+            if (config.lowMemory3D && this.lowProfile !== profile && model.data.image && !this.controller.imageIsDeleted) {
+                this.lowProfile = profile;
+                const generation = ++this.sceneGeneration;
+                this.cloudRequest.cancel();
+                void this.loadBoundedCloud(generation); return;
+            }
             for (const key of Object.keys(this.drawnObjects)) {
                 const clientID = +key;
                 const { cuboid, data } = this.drawnObjects[clientID];
@@ -1650,9 +1746,10 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
         this.drawnObjects = {};
         this.activatedElementID = null;
 
+        const disposed = new Set<unknown>();
         Object.keys(this.views).forEach((view: string): void => {
             const viewData = this.views[view as keyof Views];
-            disposeScene(viewData.scene);
+            disposeScene(viewData.scene, disposed);
         });
     }
 
@@ -1829,8 +1926,8 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             new THREE.PlaneGeometry(
                 canvasTopView.offsetHeight,
                 canvasTopView.offsetWidth,
-                canvasTopView.offsetHeight,
-                canvasTopView.offsetWidth,
+                1,
+                1,
             ),
             new THREE.MeshBasicMaterial({
                 color: 0xffffff,
@@ -1853,8 +1950,8 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             new THREE.PlaneGeometry(
                 canvasSideView.offsetHeight,
                 canvasSideView.offsetWidth,
-                canvasSideView.offsetHeight,
-                canvasSideView.offsetWidth,
+                1,
+                1,
             ),
             new THREE.MeshBasicMaterial({
                 color: 0x00ff00,
@@ -1876,8 +1973,8 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             new THREE.PlaneGeometry(
                 canvasFrontView.offsetHeight,
                 canvasFrontView.offsetWidth,
-                canvasFrontView.offsetHeight,
-                canvasFrontView.offsetWidth,
+                1,
+                1,
             ),
             new THREE.MeshBasicMaterial({
                 color: 0xffffff,
@@ -2011,6 +2108,10 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
     };
 
     public render(): void {
+        if (this.destroyed) return;
+        const now = performance.now();
+        if (this.model.data.configuration.lowMemory3D && now - this.lastRender < 1000 / 30) return;
+        this.lastRender = now;
         Object.keys(this.views).forEach((view: string): void => {
             const viewType = this.views[view as keyof Views];
             if (!(viewType.controls && viewType.camera && viewType.rayCaster)) return;
@@ -2022,7 +2123,9 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
             } else {
                 viewType.camera.updateProjectionMatrix();
             }
-            viewType.renderer.render(viewType.scene, viewType.camera);
+            if (viewType.renderer.domElement.clientWidth > 0 && viewType.renderer.domElement.clientHeight > 0) {
+                viewType.renderer.render(viewType.scene, viewType.camera);
+            }
             if (view === ViewType.PERSPECTIVE && viewType.scene.children.length !== 0) {
                 this.renderRayCaster(viewType);
             }
@@ -2048,7 +2151,16 @@ export class Canvas3dViewImpl implements Canvas3dView, Listener {
                 }
             }
         });
+        if (now - this.lastMeasure > 1000) {
+                this.lastMeasure = now;
+                window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail: {
+                    stage: 'render', render_ms: performance.now() - now,
+                    geometries: Object.values(this.views).reduce((sum, v) => sum + v.renderer.info.memory.geometries, 0),
+                    textures: Object.values(this.views).reduce((sum, v) => sum + v.renderer.info.memory.textures, 0),
+                } }));
+            }
     }
+
 
     private adjustPerspectiveCameras(): void {
         const { camera: cameraTop } = this.views.top;

@@ -1006,6 +1006,8 @@ class JobPermission(OpenPolicyAgentPermission, DownloadExportedExtension):
             ("create", "POST"): Scopes.CREATE,
             ("retrieve", "GET"): Scopes.VIEW,
             ("autolabel_permission", "GET"): Scopes.UPDATE_ANNOTATIONS,
+            ("autolabel_stream", "GET"): Scopes.VIEW_ANNOTATIONS,
+            ("autolabel_stream", "POST"): Scopes.UPDATE_ANNOTATIONS,
             ("partial_update", "PATCH"): Scopes.UPDATE,
             ("destroy", "DELETE"): Scopes.DELETE,
             ("annotations", "GET"): Scopes.VIEW_ANNOTATIONS,

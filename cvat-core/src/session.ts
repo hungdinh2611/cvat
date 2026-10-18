@@ -339,11 +339,11 @@ function buildDuplicatedAPI(prototype): void {
                     );
                     return result;
                 },
-                async contextImage(frameId) {
+                async contextImage(frameId, signal) {
                     const result = await PluginRegistry.apiWrapper.call(
                         this,
                         prototype.frames.contextImage,
-                        frameId,
+                        frameId, signal,
                     );
                     return result;
                 },
@@ -449,6 +449,7 @@ export class Session {
         removeBatch: (objectStates: ObjectState[], force?: boolean) => Promise<number[]>;
         clear: (options?: {
             reload?: boolean;
+            preserveUnsaved?: boolean;
             from?: number;
             to?: number;
             delTrackKeyframesOnly?: boolean;
@@ -531,7 +532,7 @@ export class Session {
         cachedChunks: () => Promise<number[]>;
         frameNumbers: () => Promise<number[]>;
         preview: () => Promise<string>;
-        contextImage: (frame: number) => Promise<Record<string, ImageBitmap>>;
+        contextImage: (frame: number, signal?: AbortSignal) => Promise<Record<string, ImageBitmap>>;
         contextImageData: (frame: number) => Promise<ArrayBuffer>;
         search: (
             filters: {

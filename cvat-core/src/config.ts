@@ -5,6 +5,10 @@
 
 const config = {
     backendAPI: '/api',
+    lowMemory3D: (() => {
+        try { return typeof localStorage !== 'undefined' && localStorage.getItem('cvat.3d.low-memory') === 'true'; }
+        catch { return false; }
+    })(),
     organization: {
         organizationID: null,
         organizationSlug: null,

@@ -5,7 +5,7 @@
 
 import _, { range, sortedIndexOf } from 'lodash';
 import {
-    FrameDecoder, BlockType, DimensionType, ChunkQuality, decodeContextImages, RequestOutdatedError,
+    Context3DCache, Stale3DRequest, LowMemory3DFrames, FrameDecoder, BlockType, DimensionType, ChunkQuality, decodeContextImages, RequestOutdatedError,
 } from 'cvat-data';
 import PluginRegistry from './plugins';
 import { MediaType } from './enums';
@@ -15,10 +15,14 @@ import { ArgumentError } from './exceptions';
 import { FieldUpdateTrigger } from './common';
 import config from './config';
 
+const bounded3DFrames: Record<number, LowMemory3DFrames> = {};
+const boundedContext: Record<number, Context3DCache> = {};
+
 // frame storage by job id
 const frameDataCache: Record<string, {
     metaFetchedTimestamp: number;
     chunkSize: number;
+    dimension: DimensionType;
     mode: 'annotation' | 'interpolation';
     jobStartFrame: number;
     decodeForward: boolean;
@@ -396,7 +400,14 @@ export class FrameData {
         renderHeight: number;
         imageData: ImageBitmap | Blob;
     }> {
+        const started = performance.now();
         const result = await PluginRegistry.apiWrapper.call(this, FrameData.prototype.data, onServerRequest);
+        if (frameDataCache[this.jobID]?.dimension === DimensionType.DIMENSION_3D) {
+            window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail: {
+                stage: 'frame-ready', frame: this.number, job: this.jobID, low_memory: config.lowMemory3D,
+                total_ms: performance.now() - started,
+            } }));
+        }
         return result;
     }
 }
@@ -462,6 +473,37 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
             decodeForward, forwardStep, decodedBlocksCacheSize, segmentFrameNumbers,
         } = frameDataCache[this.jobID];
         const meta = await frameDataCache[this.jobID].getMeta();
+        if (frameDataCache[this.jobID].dimension === DimensionType.DIMENSION_3D && config.lowMemory3D) {
+            provider.cleanup(Number.MAX_SAFE_INTEGER);
+            if (!bounded3DFrames[this.jobID]) {
+                bounded3DFrames[this.jobID] = new LowMemory3DFrames(
+                    (index, signal) => serverProxy.frames.getData(this.jobID, index, ChunkQuality.COMPRESSED, signal),
+                    (number) => {
+                        const index = meta.getFrameChunkIndex(meta.getDataFrameNumber(number - jobStartFrame));
+                        return { index, frames: segmentFrameNumbers.slice(index * chunkSize, (index + 1) * chunkSize) };
+                    }, undefined,
+                    (detail) => window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail })),
+                );
+            }
+            const offset = segmentFrameNumbers.indexOf(this.number);
+            if (offset < 0) throw new Error('3D source frame mapping differs');
+            // Buffer eight source frames, respecting playback direction/step and sparse jobs.
+            const direction = forwardStep < 0 ? -1 : 1;
+            const distance = Math.max(1, Math.abs(forwardStep));
+            const next = segmentFrameNumbers.filter((number) => direction > 0 ?
+                number >= this.number + distance : number <= this.number - distance);
+            if (direction < 0) next.reverse();
+            next.splice(8);
+            if (!bounded3DFrames[this.jobID].cache.get(this.number)) onServerRequest();
+            let imageData: Blob;
+            try { imageData = await bounded3DFrames[this.jobID].load(this.number, next); }
+            catch (error) {
+                if (error instanceof Stale3DRequest || error?.name === 'AbortError') throw this.number;
+                throw error;
+            }
+            return { renderWidth: this.width, renderHeight: this.height, imageData };
+        }
+        if (bounded3DFrames[this.jobID]) { bounded3DFrames[this.jobID].close(); delete bounded3DFrames[this.jobID]; }
 
         return new Promise<{
             renderWidth: number;
@@ -472,6 +514,15 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
             const requestedDataFrameNumber = meta.getDataFrameNumber(this.number - jobStartFrame);
             const chunkIndex = meta.getFrameChunkIndex(requestedDataFrameNumber);
             const frame = provider.frame(this.number);
+            frameDataCache[this.jobID].latestFrameDecodeRequest = requestId;
+            const continuePreloading = (): void => {
+                // Re-enter only the cached-frame path after releasing the decoder.
+                // A seek/job close invalidates this continuation.
+                queueMicrotask(() => {
+                    if (frameDataCache[this.jobID]?.latestFrameDecodeRequest === requestId &&
+                        provider.frame(this.number)) void this.data().catch(() => {});
+                });
+            };
 
             function findTheNextNotDecodedChunk(currentFrameIndex: number): number | null {
                 const { chunkCount } = meta;
@@ -495,23 +546,25 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
 
             if (frame) {
                 if (
-                    prefetchAnalyzer.shouldPrefetchNext(
-                        this.number,
-                        decodeForward,
-                        (chunk) => provider.isChunkCached(chunk),
-                    ) && decodedBlocksCacheSize > 1 && !frameDataCache[this.jobID].activeChunkRequest
+                    decodedBlocksCacheSize > 1 && !frameDataCache[this.jobID].activeChunkRequest
                 ) {
                     const nextChunkIndex = findTheNextNotDecodedChunk(
                         meta.getFrameIndex(requestedDataFrameNumber),
                     );
-                    const predecodeChunksMax = Math.floor(decodedBlocksCacheSize / 2);
+                    const predecodeChunksMax = Math.min(2, decodedBlocksCacheSize - 1);
                     if (nextChunkIndex !== null &&
-                        nextChunkIndex <= chunkIndex + predecodeChunksMax
+                        Math.abs(nextChunkIndex - chunkIndex) <= predecodeChunksMax
                     ) {
                         frameDataCache[this.jobID].activeChunkRequest = new Promise((resolveForward) => {
                             const releasePromise = (): void => {
                                 resolveForward();
-                                frameDataCache[this.jobID].activeChunkRequest = null;
+                                if (frameDataCache[this.jobID]) {
+                                    frameDataCache[this.jobID].activeChunkRequest = null;
+                                }
+                            };
+                            const completePreload = (): void => {
+                                releasePromise();
+                                continuePreloading();
                             };
 
                             frameDataCache[this.jobID].getChunk(
@@ -533,7 +586,7 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
                                         (nextChunkIndex + 1) * chunkSize,
                                     ),
                                     () => {},
-                                    releasePromise,
+                                    completePreload,
                                     releasePromise,
                                 );
                             }).catch(() => {
@@ -570,6 +623,7 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
                         imageData: currentFrame,
                     });
                     prefetchAnalyzer.addRequested(this.number);
+                    continuePreloading();
                     return;
                 }
 
@@ -577,9 +631,11 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
                     resolveLoadAndDecode,
                 ) => {
                     let wasResolved = false;
+                    const networkStarted = performance.now();
                     frameDataCache[this.jobID].getChunk(
                         chunkIndex, ChunkQuality.COMPRESSED,
                     ).then((chunk: ArrayBuffer) => {
+                        const decodeStarted = performance.now();
                         try {
                             if (!(this.jobID in frameDataCache)) {
                                 // check if frameDataCache still exist
@@ -616,9 +672,16 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
                                         }
                                     },
                                     () => {
+                                        if (frameDataCache[this.jobID]?.dimension === DimensionType.DIMENSION_3D) {
+                                            window.dispatchEvent(new CustomEvent('cvat:3d-performance', { detail: {
+                                                stage: 'download-decode', frame: this.number, job: this.jobID, low_memory: false,
+                                                network_ms: decodeStarted - networkStarted, decode_ms: performance.now() - decodeStarted,
+                                            } }));
+                                        }
                                         frameDataCache[this.jobID].activeChunkRequest = null;
                                         resolveLoadAndDecode();
                                         const decodedFrame = provider.frame(this.number);
+                                        continuePreloading();
                                         if (decodeForward) {
                                             // resolve after decoding everything if playing
                                             resolve({
@@ -644,8 +707,9 @@ Object.defineProperty(FrameData.prototype.data, 'implementation', {
                             reject(error);
                         }
                     }).catch((error) => {
+                        if (frameDataCache[this.jobID]) frameDataCache[this.jobID].activeChunkRequest = null;
                         reject(error);
-                        resolveLoadAndDecode(error);
+                        resolveLoadAndDecode();
                     });
                 });
             });
@@ -770,6 +834,8 @@ async function refreshJobCacheIfOutdated(jobID: number): Promise<void> {
             // chunks were re-defined. Existing data not relevant anymore
             // currently we only re-write meta, remove all cached frames from provider and clear cached context images
             // other parameters (e.g. chunkSize) are not supposed to be changed
+            bounded3DFrames[jobID]?.close(); delete bounded3DFrames[jobID];
+            boundedContext[jobID]?.close(); delete boundedContext[jobID];
             cached.provider.cleanup(Number.MAX_SAFE_INTEGER);
             for (const frame of Object.keys(cached.contextCache)) {
                 for (const image of Object.values(cached.contextCache[+frame].data)) {
@@ -788,6 +854,7 @@ export async function getContextImage(
     jobID: number,
     frame: number,
     getImageContext: (frame: number) => Promise<ArrayBuffer>,
+    signal?: AbortSignal,
 ): Promise<Record<string, ImageBitmap>> {
     if (!(jobID in frameDataCache)) {
         throw new Error(
@@ -802,6 +869,15 @@ export async function getContextImage(
     const dataFrameNumber = meta.getDataFrameNumber(frame - jobStartFrame);
     const frameIndex = meta.getFrameIndex(dataFrameNumber);
     const { related_files: relatedFiles } = meta.frames[frameIndex];
+    if (config.lowMemory3D && frameData.dimension === DimensionType.DIMENSION_3D) {
+        // Legacy cached originals can still be held by viewports from before the
+        // transition. Drop our references without closing consumer-owned images.
+        frameData.contextCache = {};
+        boundedContext[jobID] ??= new Context3DCache();
+        return boundedContext[jobID].load(frame, async () => relatedFiles ?
+            decodeContextImages(await getImageContext(frame), 0, relatedFiles) : {}, signal);
+    }
+    boundedContext[jobID]?.close(); delete boundedContext[jobID];
     return new Promise<Record<string, ImageBitmap>>((resolve, reject) => {
         if (relatedFiles === 0) {
             resolve({});
@@ -931,6 +1007,7 @@ export async function getFrame(
 
         frameDataCache[jobID] = {
             metaFetchedTimestamp: Date.now(),
+            dimension,
             chunkSize,
             mode,
             jobStartFrame,
@@ -1085,6 +1162,8 @@ export async function getJobFrameNumbers(jobID: number): Promise<number[]> {
 }
 
 export function clear(jobID: number): void {
+    bounded3DFrames[jobID]?.close(); delete bounded3DFrames[jobID];
+    boundedContext[jobID]?.close(); delete boundedContext[jobID];
     if (jobID in frameDataCache) {
         frameDataCache[jobID].provider.close();
         for (const contextImagesByFrame of Object.values(frameDataCache[jobID].contextCache)) {

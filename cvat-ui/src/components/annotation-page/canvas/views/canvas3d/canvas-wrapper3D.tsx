@@ -10,7 +10,6 @@ import {
     ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined,
 } from '@ant-design/icons';
 import Button from 'antd/lib/button';
-import Spin from 'antd/lib/spin';
 
 import {
     activateObject,
@@ -47,6 +46,8 @@ import { ShortcutScope } from 'utils/enums';
 import { registerComponentShortcuts } from 'actions/shortcuts-actions';
 import { subKeyMap } from 'utils/component-subkeymap';
 import { scrollAndExpandState } from 'utils/objects-sidebar';
+import PlaybackLoading from '../../playback-loading';
+import LowMemory3DControls from './low-memory3d-controls';
 
 const cvat = getCore();
 
@@ -280,11 +281,7 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
 
 type Props = StateToProps & DispatchToProps;
 
-const Spinner = React.memo(() => (
-    <div className='cvat-spinner-container'>
-        <Spin className='cvat-spinner' />
-    </div>
-));
+const Spinner = React.memo(PlaybackLoading);
 
 export const PerspectiveViewComponent = React.memo(
     (): JSX.Element => {
@@ -494,6 +491,7 @@ export const PerspectiveViewComponent = React.memo(
                     className='cvat-canvas-container cvat-canvas-container-overflow'
                     ref={ref}
                 />
+                <LowMemory3DControls />
                 <GlobalHotKeys handlers={handlers} keyMap={subKeyMap(componentShortcuts, keyMap)} />
                 <ArrowGroup />
                 <ControlGroup />

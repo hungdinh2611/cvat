@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 import _ from 'lodash';
+import { reconcileAfterSave } from './autolabel-merge';
 import serverProxy, { sleep } from './server-proxy';
 import { Job, Task } from './session';
 import { DataError, ServerError } from './exceptions';
@@ -216,6 +217,7 @@ export default class AnnotationsSaver {
     private id: number;
     private collection: any;
     private hash: string;
+    private progressiveIntent: any = null;
     private initialObjects: {
         shapes: Map<number, SerializedCollection['shapes'][0]>,
         tracks: Map<number, SerializedCollection['tracks'][0]>,
@@ -383,6 +385,75 @@ export default class AnnotationsSaver {
     }
 
     async save(onUpdateArg?: (message: string) => void): Promise<void> {
+        // Progressive VM jobs use a three-way save; native whole-track updates can lose new frames.
+        if (this.sessionType === 'job' && typeof window !== 'undefined') {
+            const probe = await fetch(`/api/jobs/${this.id}/autolabel-stream`, { credentials: 'same-origin' });
+            if (probe.ok && (await probe.json()).enabled) {
+                const base = Object.fromEntries(COLLECTION_KEYS.map((key) => [
+                    key, [...this.initialObjects[key].values()],
+                ]));
+                const csrf = document.cookie.split('; ').find((item) => item.startsWith('csrftoken='))?.split('=')[1];
+                if (!this.progressiveIntent) this.progressiveIntent = {
+                    operation_id: `save:${Array.from(crypto.getRandomValues(new Uint8Array(16)), (v) => v.toString(16).padStart(2, '0')).join('')}`, base, local: this.collection.export(),
+                };
+                const intent = this.progressiveIntent;
+                const local = intent.local;
+                let choices = {};
+                let expectedRevision = null;
+                let payload;
+                for (;;) {
+                const response = await fetch(`/api/jobs/${this.id}/autolabel-stream`, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': decodeURIComponent(csrf || '') },
+                    body: JSON.stringify({ mode: 'save', ...intent, choices, expected_revision: expectedRevision }),
+                });
+                payload = await response.json();
+                if (response.status === 409 && payload.conflict) {
+                    if (payload.conflict === 'revision') choices = {};
+                    else {
+                        const choice = await new Promise<string>((resolve) => {
+                            const timeout = window.setTimeout(() => resolve('cancel'), 120000);
+                            window.dispatchEvent(new CustomEvent('autolabel:save-conflict', { detail: {
+                                path: payload.conflict, local, remote: payload.current,
+                                choose: (value: string) => { window.clearTimeout(timeout); resolve(value); },
+                            } }));
+                        });
+                        if (!['local', 'remote'].includes(choice)) {
+                            this.progressiveIntent = null;
+                            throw new ServerError('Save cancelled; local edits are retained', 409);
+                        }
+                        choices = { ...choices, [payload.conflict]: choice };
+                    }
+                    expectedRevision = payload.revision;
+                    continue;
+                }
+                if (!response.ok) {
+                    throw new ServerError(`Progressive save conflict: ${payload.conflict || payload.detail}`, response.status);
+                }
+                break;
+                }
+                const current = this.collection.export();
+                const changedDuringSave = JSON.stringify(current) !== JSON.stringify(local);
+                const combined = reconcileAfterSave(local, current, payload.annotations, payload.created_ids);
+                window.dispatchEvent(new CustomEvent('autolabel:save-before', { detail: { createdIDs: payload.created_ids } }));
+                this.collection.clear();
+                this.collection.import(combined);
+                this.collection.flush = false;
+                for (const key of COLLECTION_KEYS) {
+                    this.initialObjects[key].clear();
+                    for (const object of payload.annotations[key]) {
+                        this.initialObjects[key].set(object.id, object as any);
+                    }
+                }
+                this.hash = changedDuringSave ? '' : this._getHash();
+                this.progressiveIntent = null;
+                window.dispatchEvent(new CustomEvent('autolabel:save-after'));
+                return;
+            }
+            if (!probe.ok && probe.status !== 404) {
+                throw new ServerError('Could not verify progressive annotation state', probe.status);
+            }
+        }
         const onUpdate = typeof onUpdateArg === 'function' ? onUpdateArg : (message) => {
             console.log(message);
         };

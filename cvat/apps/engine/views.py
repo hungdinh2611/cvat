@@ -1795,6 +1795,8 @@ class TaskViewSet(
     )
     def annotations(self, request: ExtendedRequest, pk: int):
         self._object = self.get_object()  # force call of check_object_permissions()
+        if request.method not in ("GET", "OPTIONS") and models.AutoLabelStreamState.objects.filter(job__segment__task_id=pk).exists():
+            return Response({"detail":"Use progressive job Save"}, status=409)
         if request.method == "GET":
             if not self._object.data:
                 return HttpResponseBadRequest(
@@ -2312,6 +2314,54 @@ class JobViewSet(
         self.get_object()  # Enforce the same OPA scope as updating job annotations.
         return Response({"allowed": True})
 
+    @action(detail=True, methods=["GET", "POST"], url_path="autolabel-stream")
+    def autolabel_stream(self, request: ExtendedRequest, pk: int):
+        self.get_object()
+        if request.method == "GET":
+            return Response({"enabled": models.AutoLabelStreamState.objects.filter(job_id=pk).exists()})
+        from cvat.apps.engine.autolabel_stream import handle_stream
+        mode = request.data.get("mode")
+        if mode not in ("incremental", "save"):
+            return Response({"detail":"Invalid progressive operation"}, status=400)
+        if mode == "incremental":
+            data = request.data
+            operations = data.get("operations")
+            if (type(data.get("expected_revision")) is not int or
+                not isinstance(data.get("operation_id"), str) or not 1 <= len(data["operation_id"]) <= 200 or
+                not isinstance(operations, list) or len(operations) > 10000):
+                return Response({"detail":"Invalid progressive batch"}, status=400)
+            for operation in operations:
+                if (not isinstance(operation, dict) or type(operation.get("frame")) is not int or
+                    type(operation.get("total_frames")) is not int or
+                    not 0 <= operation["frame"] < operation["total_frames"] or
+                    not isinstance(operation.get("identity"), str) or
+                    not isinstance(operation.get("attributes"), list) or
+                    not any(a.get("value") == operation["identity"] for a in operation["attributes"])):
+                    return Response({"detail":"Invalid progressive frame"}, status=400)
+                serializer = serializers.LabeledDataSerializer(data={"tracks":[{
+                    "frame":operation["frame"],"label_id":operation.get("label_id"),
+                    "attributes":operation["attributes"],"shapes":[{
+                        "frame":operation["frame"],"type":"rectangle","points":operation.get("points")
+                    }]}]})
+                serializer.is_valid(raise_exception=True)
+        else:
+            if not isinstance(request.data.get("operation_id"),str) or not 1<=len(request.data["operation_id"])<=200:
+                return Response({"detail":"Save operation identity required"},status=400)
+            choices=request.data.get("choices",{})
+            if not isinstance(choices,dict) or len(choices)>100 or any(v not in ("local","remote") for v in choices.values()):
+                return Response({"detail":"Invalid conflict choices"},status=400)
+            for key in ("base", "local"):
+                serializer = serializers.LabeledDataSerializer(data=request.data.get(key))
+                serializer.is_valid(raise_exception=True)
+        try:
+            code, payload = handle_stream(job_id=pk, data=request.data, mode=mode,
+                transaction=transaction, job_model=models.Job, get_annotations=dm.task.get_job_data,
+                patch_annotations=dm.task.patch_job_data, put_annotations=dm.task.put_job_data)
+        except (KeyError, TypeError, ValueError):
+            return Response({"detail":"Invalid progressive annotation"}, status=400)
+        return Response(payload, status=code)
+
+
     @transaction.atomic
     def perform_create(self, serializer):
         super().perform_create(serializer)
@@ -2522,6 +2572,9 @@ class JobViewSet(
     )
     def annotations(self, request: ExtendedRequest, pk: int):
         self._object: models.Job = self.get_object()  # force call of check_object_permissions()
+        if request.method not in ("GET", "OPTIONS") and models.AutoLabelStreamState.objects.filter(job_id=pk).exists():
+            if not (request.method == "PATCH" and request.query_params.get("action") == "create" and request.headers.get("X-Autolabel-Proposal-Id") and request.headers.get("X-Autolabel-Expected-Revision")):
+                return Response({"detail":"Use progressive Save to preserve newly processed frames"}, status=409)
         if request.method == "GET":
             if {
                 "format",

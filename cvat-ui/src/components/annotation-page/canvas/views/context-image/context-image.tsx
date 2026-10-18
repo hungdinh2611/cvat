@@ -14,6 +14,7 @@ import { SettingOutlined } from '@ant-design/icons';
 
 import CVATTooltop from 'components/common/cvat-tooltip';
 import { CombinedState } from 'reducers';
+import { releaseContextCopies } from 'utils/low-memory3d-profile';
 import ContextImageSelector from './context-image-selector';
 
 interface Props {
@@ -48,9 +49,13 @@ function ContextImage(props: Props): JSX.Element {
 
     useEffect(() => {
         let unmounted = false;
-        const promise = job.frames.contextImage(frameIndex);
+        let owned: Record<string, ImageBitmap> = {};
+        const controller = new AbortController();
+        const promise = job.frames.contextImage(frameIndex, controller.signal);
         setFetching(true);
         promise.then((imageBitmaps: Record<string, ImageBitmap>) => {
+            owned = imageBitmaps;
+            if (unmounted) releaseContextCopies(owned);
             if (!unmounted) {
                 setContextImageData(imageBitmaps);
             }
@@ -71,6 +76,8 @@ function ContextImage(props: Props): JSX.Element {
         return () => {
             setContextImageData({});
             unmounted = true;
+            controller.abort();
+            releaseContextCopies(owned);
         };
     }, [frameIndex]);
 

@@ -1867,3 +1867,19 @@ class RequestSubresource(TextChoices):
     ANNOTATIONS = "annotations"
     DATASET = "dataset"
     BACKUP = "backup"
+
+
+# AutoLabel progressive state: additive, retained after inference for safe user saves.
+class AutoLabelStreamState(models.Model):
+    job = models.OneToOneField(Job, primary_key=True, on_delete=models.CASCADE)
+    state = models.JSONField(default=dict)
+
+
+class AutoLabelStreamOperation(models.Model):
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+    operation_id = models.CharField(max_length=200)
+    digest = models.CharField(max_length=64)
+    result = models.JSONField(default=dict)
+
+    class Meta:
+        unique_together = (("job", "operation_id"),)

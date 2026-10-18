@@ -235,6 +235,7 @@ export default interface CVATCore {
         onOrganizationChange: (newOrgId: number | null) => void | null;
         globalObjectsCounter: typeof config.globalObjectsCounter;
         requestsStatusDelay: typeof config.requestsStatusDelay;
+        lowMemory3D: boolean;
         jobMetaDataReloadPeriod: typeof config.jobMetaDataReloadPeriod;
         previewPlaceholders: typeof config.previewPlaceholders;
     },

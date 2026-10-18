@@ -19,6 +19,7 @@ import WorkspaceSettingsContainer from 'containers/header/settings-modal/workspa
 import PlayerSettingsContainer from 'containers/header/settings-modal/player-settings';
 import ShortcutsSettingsContainer from 'containers/header/settings-modal/shortcuts-settings';
 import { CombinedState } from 'reducers';
+import LowMemory3DSettings from './low-memory3d-settings';
 
 interface SettingsModalProps {
     visible: boolean;
@@ -55,6 +56,12 @@ function SettingsModal(props: SettingsModalProps): JSX.Element {
     }, []);
 
     const tabItems = [
+        { key: '3d-memory', label: <Text>3D ít RAM</Text>, children: <LowMemory3DSettings /> },
+        { key: 'vlm', label: <Text>VLM</Text>, children: (
+            <Button onClick={() => window.dispatchEvent(new CustomEvent('autolabel:vlm-settings'))}>
+                Configure private vision API
+            </Button>
+        ) },
         {
             key: 'player',
             label: <Text>Player</Text>,

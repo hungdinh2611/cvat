@@ -180,6 +180,22 @@ export async function clearAnnotations(
         checkObjectType('reload', reload, 'boolean');
 
         if (reload) {
+            if (options.preserveUnsaved) {
+                const previous = cache.collection.get(session);
+                if (!previous || previous.saver.hasUnsavedChanges()) {
+                    throw new ArgumentError('Save local edits before synchronizing');
+                }
+                const data = await serverProxy.annotations.getAnnotations(sessionType, session.id);
+                if (previous !== cache.collection.get(session) || previous.saver.hasUnsavedChanges()) {
+                    throw new ArgumentError('New local edits retained; synchronization postponed');
+                }
+                // No await between the final dirty check and replacement.
+                previous.collection.clear();
+                previous.collection.import(data);
+                cache.history.get(session)?.clear();
+                cache.collection.set(session, { collection: previous.collection, saver: new AnnotationsSaver(previous.collection, session) });
+                return;
+            }
             cache.collection.delete(session);
             // delete history as it may relate to objects from collection we deleted above
             cache.history.delete(session);

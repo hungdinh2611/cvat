@@ -7,7 +7,6 @@ import './styles.scss';
 
 import React from 'react';
 import { connect } from 'react-redux';
-import Spin from 'antd/lib/spin';
 import Popover from 'antd/lib/popover';
 import Icon, { UpOutlined } from '@ant-design/icons';
 import notification from 'antd/lib/notification';
@@ -81,6 +80,7 @@ import {
 } from 'utils/multi-selection';
 import ImageSetupsContent from './image-setups-content';
 import CanvasTipsComponent from './canvas-hints';
+import PlaybackLoading from '../../playback-loading';
 
 const cvat = getCore();
 const MAX_DISTANCE_TO_OPEN_SHAPE = 50;
@@ -1361,9 +1361,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
                 <CanvasTipsComponent ref={this.canvasTipsRef} />
                 {
                     !canvasIsReady && (
-                        <div className='cvat-spinner-container'>
-                            <Spin className='cvat-spinner' />
-                        </div>
+                        <PlaybackLoading />
                     )
                 }
 
