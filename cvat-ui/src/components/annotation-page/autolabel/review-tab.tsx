@@ -6,6 +6,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Alert from 'antd/lib/alert';
 import Button from 'antd/lib/button';
 import Empty from 'antd/lib/empty';
+import message from 'antd/lib/message';
+import Modal from 'antd/lib/modal';
 import Segmented from 'antd/lib/segmented';
 import Select from 'antd/lib/select';
 import Space from 'antd/lib/space';
@@ -13,7 +15,7 @@ import Table, { ColumnsType } from 'antd/lib/table';
 import Tag from 'antd/lib/tag';
 import Text from 'antd/lib/typography/Text';
 import {
-    AimOutlined, CheckOutlined, EyeOutlined, ReloadOutlined,
+    AimOutlined, CheckOutlined, CheckSquareOutlined, EyeOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 
 import CVATTooltip from 'components/common/cvat-tooltip';
@@ -24,6 +26,7 @@ import T from './autolabel-text';
 import { jumpToFrame, useAction } from './autolabel-common';
 
 const PAGE_SIZE = 50; // Fixed by the API.
+const BULK_CONCURRENCY = 4;
 
 const STATE_VIEW: Record<ReviewState, { color: string; label: string }> = {
     unseen: { color: 'default', label: T.stateUnseen },
@@ -68,6 +71,61 @@ function ReviewTab({ job, onResultJob }: Props): JSX.Element {
             await load();
         },
     );
+
+    // The API only updates one track at a time, so collect every page first, then post with a small pool.
+    const resolveAll = (): Promise<void> => run('resolve-all', async () => {
+        const pending: ReviewTrack[] = [];
+        for (let current = 1; ; current++) {
+            const result = await vmApi.review(job.job_id, current, className, '');
+            pending.push(...result.tracks.filter((track) => track.state !== 'resolved'));
+            if (current * PAGE_SIZE >= result.total || !result.tracks.length) break;
+        }
+        if (!pending.length) {
+            message.info(T.resolveAllNone);
+            return;
+        }
+        const confirmed = await new Promise<boolean>((resolve) => {
+            Modal.confirm({
+                title: T.resolveAllTitle,
+                content: (
+                    <>
+                        <Text>
+                            {className ? `${T.resolveAllClassScope} "${className}"` : T.resolveAllScope}
+                            {`: ${pending.length} ${T.tracks}.`}
+                        </Text>
+                        <Text type='secondary' className='cvat-autolabel-meta'>{T.resolveAllNote}</Text>
+                    </>
+                ),
+                okText: `${T.resolveAll} (${pending.length})`,
+                okButtonProps: { danger: true },
+                cancelText: 'Cancel',
+                className: 'cvat-autolabel-resolve-all-confirm',
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false),
+            });
+        });
+        if (!confirmed) return;
+        let done = 0;
+        const queue = [...pending];
+        const worker = async (): Promise<void> => {
+            for (let track = queue.shift(); track; track = queue.shift()) {
+                await vmApi.setReviewState(job.job_id, track.track_id, 'resolved');
+                done += 1;
+                message.loading({
+                    key: 'autolabel-resolve-all', content: `${T.resolveAllProgress}: ${done} / ${pending.length}`,
+                });
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: BULK_CONCURRENCY }, worker));
+            message.success({ key: 'autolabel-resolve-all', content: `${done} ${T.resolveAllDone}` });
+        } catch (failure) {
+            message.destroy('autolabel-resolve-all');
+            throw failure;
+        } finally {
+            await load();
+        }
+    });
 
     const goTo = (track: ReviewTrack): Promise<void> => run(
         `${track.track_id}:jump`, () => jumpToFrame(track.frame, track.track_id),
@@ -160,6 +218,17 @@ function ReviewTab({ job, onResultJob }: Props): JSX.Element {
                 <CVATTooltip overlay={T.refresh}>
                     <Button icon={<ReloadOutlined />} aria-label={T.refresh} loading={loading} onClick={load} />
                 </CVATTooltip>
+                <Button
+                    danger
+                    type='primary'
+                    icon={<CheckSquareOutlined />}
+                    loading={isBusy('resolve-all')}
+                    disabled={!data}
+                    onClick={resolveAll}
+                    className='cvat-autolabel-resolve-all-button'
+                >
+                    {T.resolveAll}
+                </Button>
             </div>
             <Segmented
                 block
