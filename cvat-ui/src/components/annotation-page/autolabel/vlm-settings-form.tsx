@@ -63,6 +63,11 @@ function VlmSettingsForm(): JSX.Element {
 
     if (error) return <Alert type='error' showIcon message={error} />;
 
+    const usingDefault = settings?.mode === 'system' && !!settings.key_configured;
+    let keyTag = { color: 'warning', label: T.keyMissing };
+    if (settings?.mode === 'custom') keyTag = { color: 'success', label: T.keyPrivate };
+    else if (usingDefault) keyTag = { color: 'blue', label: T.keyDefault };
+
     // The form stays mounted while loading so setFieldsValue always has a target.
     return (
         <Spin spinning={!settings}>
@@ -77,11 +82,10 @@ function VlmSettingsForm(): JSX.Element {
                     <div className='cvat-autolabel-block'>
                         <Text type='secondary'>{`${T.vlmCurrent} `}</Text>
                         <Text strong>{settings.model}</Text>
-                        <Tag color={settings.key_configured ? 'success' : 'warning'} className='cvat-autolabel-key-tag'>
-                            {settings.key_configured ? T.keyConfigured : T.keyMissing}
-                        </Tag>
+                        <Tag color={keyTag.color} className='cvat-autolabel-key-tag'>{keyTag.label}</Tag>
                     </div>
                 )}
+                {usingDefault && <Alert type='info' showIcon className='cvat-autolabel-block' message={T.usingDefault} />}
                 <Form.Item
                     name='baseURL'
                     label={T.baseURL}
@@ -115,17 +119,17 @@ function VlmSettingsForm(): JSX.Element {
                     >
                         {T.presetOpenRouter}
                     </Button>
-                    {settings?.key_configured && (
+                    {settings?.mode === 'custom' && (
                         <Popconfirm
-                            title={T.deleteKeyConfirm}
+                            title={settings.default_available ? T.deleteKeyToDefaultConfirm : T.deleteKeyConfirm}
                             onConfirm={() => run('delete', async () => {
                                 await vmApi.deleteVlmKey();
                                 apply(await vmApi.vlmSettings());
-                                message.success(T.keyDeleted);
+                                message.success(settings.default_available ? T.switchedToDefault : T.keyDeleted);
                             })}
                         >
                             <Button danger type='text' icon={<DeleteOutlined />} loading={isBusy('delete')}>
-                                {T.deleteKey}
+                                {settings.default_available ? T.deleteKeyToDefault : T.deleteKey}
                             </Button>
                         </Popconfirm>
                     )}

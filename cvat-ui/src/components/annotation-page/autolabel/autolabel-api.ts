@@ -98,7 +98,11 @@ export interface RefineResult {
 export interface VlmSettings {
     model: string;
     endpoint: string;
+    // 'system' is the server default VLM; 'custom' is the account's private key and model.
+    mode: 'system' | 'custom' | string;
     key_configured: boolean;
+    // True when the operator configured a default key that accounts without their own can use.
+    default_available?: boolean;
 }
 
 export interface PrivacyRegion {
