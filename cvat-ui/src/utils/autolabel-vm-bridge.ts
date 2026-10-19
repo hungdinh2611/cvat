@@ -3,6 +3,7 @@ import { Job, getCore } from 'cvat-core-wrapper';
 import { setLowMemory3D } from 'utils/low-memory3d-profile';
 import { activateObject, fetchAnnotationsAsync } from 'actions/annotation-actions';
 import { CombinedState } from 'reducers';
+import { writeLatestFrame } from 'utils/remember-latest-frame';
 
 export function installAutoLabelBridge(
     job: Job, changeFrame: (frame: number) => void,
@@ -15,27 +16,74 @@ export function installAutoLabelBridge(
     let active = true;
     let savedSelection: any = null;
     const geometry = (object: any): string => JSON.stringify([object.label.id, object.frame, object.points]);
+    const labelSchema = (labels: any[]): string => {
+        const normalize = (label: any): object => ({
+            id: label.id,
+            name: label.name,
+            type: label.type,
+            attributes: label.attributes.map((attribute: any) => ({
+                id: attribute.id,
+                name: attribute.name,
+                inputType: attribute.inputType,
+                defaultValue: attribute.defaultValue,
+                mutable: attribute.mutable,
+                values: attribute.values,
+                deleted: attribute.deleted,
+            })).sort((left: any, right: any) => (left.id ?? 0) - (right.id ?? 0)),
+            sublabels: label.structure?.sublabels ? JSON.parse(labelSchema(label.structure.sublabels)) : [],
+        });
+        return JSON.stringify(labels.map(normalize).sort((left: any, right: any) => (left.id ?? 0) - (right.id ?? 0)));
+    };
+    const reloadForChangedLabels = async (): Promise<boolean> => {
+        const [freshJob] = await getCore().jobs.get({ jobID: job.id });
+        if (!active) return true;
+        if (!freshJob || labelSchema(freshJob.labels) ===
+            labelSchema(getState().annotation.job.labels)) return false;
+        if (job.annotations.hasUnsavedChanges()) return false;
+        writeLatestFrame(job.id, getState().annotation.player.frame.number);
+        window.location.reload();
+        return true;
+    };
     const beforeSave = (event: Event): void => {
         const current = getState().annotation;
-        const object = current.annotations.states.find((item) => item.clientID === current.annotations.activatedStateID);
-        if (!object) { savedSelection = null; return; }
+        const object = current.annotations.states.find(
+            (item) => item.clientID === current.annotations.activatedStateID,
+        );
+        if (!object) {
+            savedSelection = null;
+            return;
+        }
         const created = (event as CustomEvent).detail?.createdIDs || {};
-        savedSelection = { identity: identity(object), serverID: object.serverID || created[`${object.objectType}s`]?.[object.clientID],
-            geometry: geometry(object), frame: current.player.frame.number };
+        savedSelection = {
+            identity: identity(object),
+            serverID: object.serverID || created[`${object.objectType}s`]?.[object.clientID],
+            geometry: geometry(object),
+            frame: current.player.frame.number,
+        };
     };
     const afterSave = async (): Promise<void> => {
         if (!savedSelection || !active) return;
         const previous = savedSelection;
+        if (job.annotations.hasUnsavedChanges()) return;
+        try {
+            if (await reloadForChangedLabels()) return;
+        } catch {
+            // Do not refresh annotations when the current label schema could not be checked.
+            return;
+        }
+        if (job.annotations.hasUnsavedChanges()) return;
         await dispatch(fetchAnnotationsAsync());
         if (!active || getState().annotation.player.frame.number !== previous.frame) return;
-        const states = getState().annotation.annotations.states;
+        const { annotation: { annotations: { states } } } = getState();
         const object = states.find((item) => previous.identity && identity(item) === previous.identity) ||
             states.find((item) => previous.serverID && item.serverID === previous.serverID) ||
             states.find((item) => geometry(item) === previous.geometry);
         if (object) dispatch(activateObject(object.clientID, null, null));
     };
     const listener = async (event: Event): Promise<void> => {
-        const { requestID, action, frame, trackID } = (event as CustomEvent).detail;
+        const {
+            requestID, action, frame, trackID,
+        } = (event as CustomEvent).detail;
         const reply = (value: object): void => {
             if (active) window.dispatchEvent(new CustomEvent('autolabel:vm-reply', { detail: { requestID, ...value } }));
         };
@@ -49,19 +97,31 @@ export function installAutoLabelBridge(
                 return;
             }
             if (action === 'status') {
-                reply({ ok: true, dirty: job.annotations.hasUnsavedChanges(), frame: getState().annotation.player.frame.number });
+                reply({
+                    ok: true,
+                    dirty: job.annotations.hasUnsavedChanges(),
+                    frame: getState().annotation.player.frame.number,
+                });
                 return;
             }
             if (job.annotations.hasUnsavedChanges()) {
                 throw new Error('Lưu chỉnh sửa trước khi đồng bộ kết quả mới');
             }
             const current = getState().annotation;
-            const selected = current.annotations.states.find((item) => item.clientID === current.annotations.activatedStateID);
+            const selected = current.annotations.states.find(
+                (item) => item.clientID === current.annotations.activatedStateID,
+            );
             const selectedIdentity = selected ? identity(selected) : null;
             if (action === 'sync') {
+                if (await reloadForChangedLabels()) return;
+                if (job.annotations.hasUnsavedChanges()) {
+                    throw new Error('Lưu chỉnh sửa trước khi đồng bộ kết quả mới');
+                }
                 await job.annotations.clear({ reload: true, preserveUnsaved: true });
                 await dispatch(fetchAnnotationsAsync());
-                const restored = getState().annotation.annotations.states.find((item) => identity(item) === selectedIdentity);
+                const restored = getState().annotation.annotations.states.find(
+                    (item) => identity(item) === selectedIdentity,
+                );
                 if (restored) dispatch(activateObject(restored.clientID, null, null));
                 reply({ ok: true });
                 return;
@@ -71,9 +131,12 @@ export function installAutoLabelBridge(
             }
             changeFrame(frame);
             const deadline = Date.now() + 5000;
-            while (active && (getState().annotation.player.frame.number !== frame || getState().annotation.player.frame.fetching)) {
+            while (active && (getState().annotation.player.frame.number !== frame ||
+                getState().annotation.player.frame.fetching)) {
                 if (Date.now() > deadline) throw new Error('Chưa tải được frame');
-                await new Promise((resolve) => window.setTimeout(resolve, 25));
+                await new Promise((resolve) => {
+                    window.setTimeout(resolve, 25);
+                });
             }
             if (trackID) {
                 await dispatch(fetchAnnotationsAsync());
