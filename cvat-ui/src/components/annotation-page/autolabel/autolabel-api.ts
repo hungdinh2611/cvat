@@ -165,35 +165,6 @@ export async function request<T>(path: string, method = 'GET', body?: unknown): 
     return response.json();
 }
 
-// fetch() cannot report upload progress, so large videos go through XHR.
-export function uploadVideo(
-    video: File, options: RunOptions, onProgress: (percent: number) => void,
-): Promise<VmJob> {
-    const data = new FormData();
-    data.append('video', video);
-    data.append('options', JSON.stringify(options));
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${AUTOLABEL_API}/vm/jobs`);
-        xhr.withCredentials = true;
-        xhr.setRequestHeader('X-CSRFToken', csrfToken());
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
-        };
-        xhr.onload = () => {
-            let parsed: any = null;
-            try { parsed = JSON.parse(xhr.responseText); } catch { /* handled below */ }
-            if (xhr.status >= 200 && xhr.status < 300 && parsed) resolve(parsed);
-            else {
-                const detail = typeof parsed?.detail === 'string' ? parsed.detail : `AutoLabel HTTP ${xhr.status}`;
-                reject(new AutoLabelError(detail, xhr.status));
-            }
-        };
-        xhr.onerror = () => reject(new AutoLabelError('Network error while uploading the video', 0));
-        xhr.send(data);
-    });
-}
-
 export const vmApi = {
     capabilities: () => request<VmCapabilities>('/vm/capabilities'),
     job: (jobID: string) => request<VmJob>(`/vm/jobs/${encodeURIComponent(jobID)}/processing`),

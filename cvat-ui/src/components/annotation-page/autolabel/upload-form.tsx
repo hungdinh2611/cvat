@@ -2,22 +2,21 @@
 //
 // SPDX-License-Identifier: MIT
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import Form from 'antd/lib/form';
-import Upload, { UploadFile } from 'antd/lib/upload';
 import Select from 'antd/lib/select';
 import Radio from 'antd/lib/radio';
 import Checkbox from 'antd/lib/checkbox';
-import Segmented from 'antd/lib/segmented';
 import Collapse from 'antd/lib/collapse';
 import Button from 'antd/lib/button';
-import Progress from 'antd/lib/progress';
 import Alert from 'antd/lib/alert';
 import Text from 'antd/lib/typography/Text';
-import { InboxOutlined, CloudUploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined } from '@ant-design/icons';
 
+import { CombinedState } from 'reducers';
 import {
-    AutoLabelError, RunOptions, VmCapabilities, VmJob, VmPipeline, uploadVideo, vmApi,
+    RunOptions, VmCapabilities, VmJob, VmPipeline, vmApi,
 } from './autolabel-api';
 import T from './autolabel-text';
 import { useAction } from './autolabel-common';
@@ -40,16 +39,11 @@ const PIPELINE_VIEW: Record<string, { label: string; description: string }> = {
     },
 };
 
-// Classes mapped to the detector out of the box; others need a server-side mapping.
-const SUGGESTED_CLASSES = ['car', 'person'];
-
 interface FormValues {
     classes: string[];
     pipeline: VmPipeline;
     vlmEnabled: boolean;
 }
-
-type Source = 'job' | 'upload';
 
 interface Props {
     capabilities: VmCapabilities;
@@ -59,42 +53,27 @@ interface Props {
 
 function UploadForm({ capabilities, cvatJobID, onCreated }: Props): JSX.Element {
     const [form] = Form.useForm<FormValues>();
-    // The open job already holds its video in CVAT, so that is the default input.
-    const [source, setSource] = useState<Source>('job');
-    const [files, setFiles] = useState<UploadFile[]>([]);
-    const [progress, setProgress] = useState<number | null>(null);
+    const labels = useSelector((state: CombinedState) => state.annotation.job.labels);
+    const jobClasses = labels.map((label) => label.name);
     const [isBusy, run] = useAction();
     const pipelines = capabilities.pipelines?.length ? capabilities.pipelines : ['sam'];
     const initialPipeline = pipelines.includes(DEFAULT_PIPELINE) ? DEFAULT_PIPELINE : pipelines[0];
 
+    useEffect(() => {
+        form.setFieldsValue({ classes: jobClasses });
+    }, [form, labels]);
+
     const submit = (values: FormValues): Promise<void> => run('upload', async () => {
         const options: RunOptions = {
-            classes: values.classes.map((value) => value.trim()),
+            // Keep every current-job label in the request. The server uses SAM for the
+            // whole run when any requested class lacks a detector mapping.
+            classes: jobClasses,
             variant: capabilities.hybrid_variant ?? 'sam3',
             // The pipeline field is only mounted when the server offers a choice.
             pipeline: values.pipeline ?? initialPipeline,
             vlm_enabled: values.vlmEnabled,
         };
-        if (source === 'job') {
-            try {
-                onCreated(await vmApi.startFromCvatJob(cvatJobID, options));
-            } catch (failure) {
-                // Image or cloud-storage tasks have no stored video; offer the upload path instead.
-                if (failure instanceof AutoLabelError && failure.status === 409) setSource('upload');
-                throw failure;
-            }
-            return;
-        }
-        const video = files[0]?.originFileObj;
-        if (!video) throw new Error(T.videoRequired);
-        setProgress(0);
-        try {
-            const job = await uploadVideo(video, options, setProgress);
-            setFiles([]);
-            onCreated(job);
-        } finally {
-            setProgress(null);
-        }
+        onCreated(await vmApi.startFromCvatJob(cvatJobID, options));
     });
 
     return (
@@ -104,46 +83,20 @@ function UploadForm({ capabilities, cvatJobID, onCreated }: Props): JSX.Element 
             className='cvat-autolabel-upload-form'
             requiredMark={false}
             disabled={isBusy('upload')}
-            initialValues={{ classes: SUGGESTED_CLASSES, pipeline: initialPipeline, vlmEnabled: false }}
+            initialValues={{ classes: jobClasses, pipeline: initialPipeline, vlmEnabled: false }}
             onFinish={submit}
         >
             <Alert type='info' showIcon className='cvat-autolabel-block' message={T.privacyNote} />
-            <Form.Item label={T.video} required extra={source === 'job' ? T.sourceThisJobHint : undefined}>
-                <Segmented
-                    block
-                    value={source}
-                    onChange={(value) => setSource(value as Source)}
-                    options={[
-                        { value: 'job', label: T.sourceThisJob },
-                        { value: 'upload', label: T.sourceUpload },
-                    ]}
-                    className='cvat-autolabel-source-switch'
-                />
+            <Form.Item label={T.video}>
+                <Text type='secondary'>{T.sourceThisJobHint}</Text>
             </Form.Item>
-            {source === 'upload' && (
-                <Form.Item>
-                    <Upload.Dragger
-                        accept='video/*'
-                        maxCount={1}
-                        fileList={files}
-                        beforeUpload={() => false}
-                        onChange={({ fileList }) => setFiles(fileList.slice(-1))}
-                        className='cvat-autolabel-video-dragger'
-                    >
-                        <p className='ant-upload-drag-icon'><InboxOutlined /></p>
-                        <p className='ant-upload-text'>{T.videoHint}</p>
-                    </Upload.Dragger>
-                </Form.Item>
-            )}
             <Form.Item
                 name='classes'
                 label={T.classes}
                 extra={T.classesHint}
                 rules={[{
                     validator: (_, value: string[] = []) => {
-                        const names = value.map((name) => name.trim()).filter(Boolean);
-                        const valid = names.length >= 1 && names.length <= 8 &&
-                            new Set(names).size === names.length && names.every((name) => name.length <= 128);
+                        const valid = value.length >= 1;
                         return valid ? Promise.resolve() : Promise.reject(new Error(T.classesRule));
                     },
                 }]}
@@ -151,7 +104,8 @@ function UploadForm({ capabilities, cvatJobID, onCreated }: Props): JSX.Element 
                 <Select
                     mode='tags'
                     tokenSeparators={[',']}
-                    options={SUGGESTED_CLASSES.map((name) => ({ value: name, label: name }))}
+                    options={jobClasses.map((name) => ({ value: name, label: name }))}
+                    disabled
                 />
             </Form.Item>
             <Form.Item name='vlmEnabled' valuePropName='checked'>
@@ -185,21 +139,15 @@ function UploadForm({ capabilities, cvatJobID, onCreated }: Props): JSX.Element 
                     }]}
                 />
             )}
-            {progress !== null && (
-                <div className='cvat-autolabel-block'>
-                    <Text type='secondary'>{T.uploading}</Text>
-                    <Progress percent={progress} size='small' />
-                </div>
-            )}
             <Button
                 type='primary'
                 htmlType='submit'
                 block
-                icon={source === 'job' ? <PlayCircleOutlined /> : <CloudUploadOutlined />}
+                icon={<PlayCircleOutlined />}
                 loading={isBusy('upload')}
                 className='cvat-autolabel-submit-button'
             >
-                {source === 'job' ? T.submitThisJob : T.submit}
+                {T.submitThisJob}
             </Button>
         </Form>
     );
