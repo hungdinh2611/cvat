@@ -30,6 +30,7 @@ import Modal from 'antd/lib/modal';
 import Text from 'antd/lib/typography/Text';
 
 import config from 'config';
+import { DemoGuideButton } from 'components/demo-guide/demo-guide';
 
 import { Organization } from 'cvat-core-wrapper';
 import CVATTooltip from 'components/common/cvat-tooltip';
@@ -491,6 +492,7 @@ function HeaderComponent(props: Props): JSX.Element {
                 ) : null}
             </div>
             <div className='cvat-right-header'>
+                <DemoGuideButton />
                 <CVATTooltip overlay='Click to open repository'>
                     <Button
                         icon={<GithubOutlined />}

@@ -1,0 +1,29 @@
+// Copyright (C) CVAT.ai Corporation
+// SPDX-License-Identifier: MIT
+
+.cvat-demo-guide-choices {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+
+    .ant-card {
+        border-top: 3px solid #1677ff;
+    }
+
+    .ant-card-body {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .ant-btn {
+        align-self: flex-start;
+        margin-top: auto;
+        padding-left: 0;
+    }
+
+    @media (width <= 560px) {
+        grid-template-columns: 1fr;
+    }
+}

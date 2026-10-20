@@ -5,6 +5,7 @@
 
 import { ActionUnion, createAction, ThunkAction } from 'utils/redux';
 import { RegisterData } from 'components/register-page/register-form';
+import { resetDemoGuideSession } from 'utils/demo-guide-session';
 import { ensureError } from 'utils/error-handling';
 import { fetchAllPaginated } from 'utils/pagination';
 import {
@@ -148,6 +149,7 @@ export const loginAsync = (credential: string, password: string): ThunkAction =>
     try {
         await cvat.server.login(credential, password);
         const users = await cvat.users.get({ self: true });
+        resetDemoGuideSession();
         dispatch(authActions.loginSuccess(users[0]));
     } catch (error) {
         const hasEmailVerificationBeenSent = error.message.includes('Unverified email');
@@ -161,6 +163,7 @@ export const logoutAsync = (): ThunkAction => async (dispatch) => {
     try {
         await cvat.organizations.deactivate();
         await cvat.server.logout();
+        resetDemoGuideSession();
         dispatch(authActions.logoutSuccess());
     } catch (error) {
         dispatch(authActions.logoutFailed(error));

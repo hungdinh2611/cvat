@@ -22,6 +22,7 @@ import ResetPasswordPageConfirmComponent from 'components/reset-password-confirm
 import ResetPasswordPageComponent from 'components/reset-password-page/reset-password-page';
 
 import Header from 'components/header/header';
+import DemoGuideProvider from 'components/demo-guide/demo-guide';
 import GlobalErrorBoundary from 'components/global-error-boundary/global-error-boundary';
 
 import ShortcutsDialog from 'components/shortcuts-dialog/shortcuts-dialog';
@@ -550,91 +551,93 @@ class CVATApplication extends React.PureComponent<CVATAppProps & RouteComponentP
                 return (
                     <GlobalErrorBoundary>
                         <ShortcutsContextProvider>
-                            <Layout>
-                                <Header />
-                                <Layout.Content style={{ height: '100%', position: 'relative' }}>
-                                    <ShortcutsDialog />
-                                    <Switch>
-                                        <Route exact path='/auth/logout' component={LogoutComponent} />
-                                        <Route exact path='/projects' component={ProjectsPageComponent} />
-                                        <Route exact path='/projects/create' component={CreateProjectPageComponent} />
-                                        <Route exact path='/projects/:id' component={ProjectPageComponent} />
-                                        <Route exact path='/projects/:id/webhooks' component={WebhooksPage} />
-                                        <Route exact path='/projects/:id/guide' component={AnnotationGuidePage} />
-                                        <Route exact path='/projects/:pid/quality-control' component={QualityControlPage} />
-                                        <Route exact path='/projects/:pid/analytics' component={AnalyticsReportPage} />
-                                        <Route exact path='/tasks' component={TasksPageContainer} />
-                                        <Route exact path='/tasks/create' component={CreateTaskPageContainer} />
-                                        <Route exact path='/tasks/:id' component={TaskPageComponent} />
-                                        <Route exact path='/tasks/:tid/quality-control' component={QualityControlPage} />
-                                        <Route exact path='/tasks/:tid/analytics' component={AnalyticsReportPage} />
-                                        <Route exact path='/tasks/:tid/consensus' component={ConsensusManagementPage} />
-                                        <Route exact path='/tasks/:id/jobs/create' component={CreateJobPage} />
-                                        <Route exact path='/tasks/:id/guide' component={AnnotationGuidePage} />
-                                        <Route exact path='/tasks/:tid/jobs/:jid' component={AnnotationPageContainer} />
-                                        <Route exact path='/tasks/:tid/jobs/:jid/analytics' component={AnalyticsReportPage} />
-                                        <Route exact path='/jobs' component={JobsPageComponent} />
-                                        <Route exact path='/cloudstorages' component={CloudStoragesPageComponent} />
-                                        <Route
-                                            exact
-                                            path='/cloudstorages/create'
-                                            component={CreateCloudStoragePageComponent}
-                                        />
-                                        <Route
-                                            exact
-                                            path='/cloudstorages/update/:id'
-                                            component={UpdateCloudStoragePageComponent}
-                                        />
-                                        <Route
-                                            exact
-                                            path='/organizations/create'
-                                            component={CreateOrganizationComponent}
-                                        />
-                                        <Route exact path='/organization/webhooks' component={WebhooksPage} />
-                                        <Route exact path='/webhooks/create' component={CreateWebhookPage} />
-                                        <Route exact path='/webhooks/update/:id' component={UpdateWebhookPage} />
-                                        <Route exact path='/invitations' component={InvitationsPage} />
-                                        <Route exact path='/organization' component={OrganizationPage} />
-                                        <Route exact path='/requests' component={RequestsPage} />
-                                        <Route exact path='/profile' component={ProfilePageComponent} />
-                                        { routesToRender }
-                                        <Route
-                                            path='/models'
-                                        >
-                                            <Switch>
-                                                <Route exact path='/models' component={ModelsPageComponent} />
-                                            </Switch>
-                                        </Route>
-                                        <Redirect
-                                            push
-                                            to={{
-                                                pathname: queryParams.get('next') ?? '/tasks',
-                                                search: authParams ? new URLSearchParams(authParams).toString() : '',
-                                            }}
-                                        />
-                                    </Switch>
-                                    <ExportDatasetModal />
-                                    <ExportBackupModal />
-                                    <ImportDatasetModal />
-                                    <ImportBackupModal />
-                                    <InvitationWatcher />
-                                    <UploadFileStatusModal />
-                                    <SelectCSUpdatingSchemeModal />
-                                    <SelectOrganizationModal />
-                                    <BulkProgress />
-                                    {this.state.githubStarPromptVisible &&
-                                        growth.data ? (
-                                            <GitHubStarModal
-                                                open
-                                                onShown={this.markGitHubStarPromptShown}
-                                                onSupport={this.supportCVAT}
-                                                onClose={() => this.setState({ githubStarPromptVisible: false })}
+                            <DemoGuideProvider>
+                                <Layout>
+                                    <Header />
+                                    <Layout.Content style={{ height: '100%', position: 'relative' }}>
+                                        <ShortcutsDialog />
+                                        <Switch>
+                                            <Route exact path='/auth/logout' component={LogoutComponent} />
+                                            <Route exact path='/projects' component={ProjectsPageComponent} />
+                                            <Route exact path='/projects/create' component={CreateProjectPageComponent} />
+                                            <Route exact path='/projects/:id' component={ProjectPageComponent} />
+                                            <Route exact path='/projects/:id/webhooks' component={WebhooksPage} />
+                                            <Route exact path='/projects/:id/guide' component={AnnotationGuidePage} />
+                                            <Route exact path='/projects/:pid/quality-control' component={QualityControlPage} />
+                                            <Route exact path='/projects/:pid/analytics' component={AnalyticsReportPage} />
+                                            <Route exact path='/tasks' component={TasksPageContainer} />
+                                            <Route exact path='/tasks/create' component={CreateTaskPageContainer} />
+                                            <Route exact path='/tasks/:id' component={TaskPageComponent} />
+                                            <Route exact path='/tasks/:tid/quality-control' component={QualityControlPage} />
+                                            <Route exact path='/tasks/:tid/analytics' component={AnalyticsReportPage} />
+                                            <Route exact path='/tasks/:tid/consensus' component={ConsensusManagementPage} />
+                                            <Route exact path='/tasks/:id/jobs/create' component={CreateJobPage} />
+                                            <Route exact path='/tasks/:id/guide' component={AnnotationGuidePage} />
+                                            <Route exact path='/tasks/:tid/jobs/:jid' component={AnnotationPageContainer} />
+                                            <Route exact path='/tasks/:tid/jobs/:jid/analytics' component={AnalyticsReportPage} />
+                                            <Route exact path='/jobs' component={JobsPageComponent} />
+                                            <Route exact path='/cloudstorages' component={CloudStoragesPageComponent} />
+                                            <Route
+                                                exact
+                                                path='/cloudstorages/create'
+                                                component={CreateCloudStoragePageComponent}
                                             />
-                                        ) : null}
-                                    {/* eslint-disable-next-line */}
-                                    <a id='downloadAnchor' target='_blank' style={{ display: 'none' }} download />
-                                </Layout.Content>
-                            </Layout>
+                                            <Route
+                                                exact
+                                                path='/cloudstorages/update/:id'
+                                                component={UpdateCloudStoragePageComponent}
+                                            />
+                                            <Route
+                                                exact
+                                                path='/organizations/create'
+                                                component={CreateOrganizationComponent}
+                                            />
+                                            <Route exact path='/organization/webhooks' component={WebhooksPage} />
+                                            <Route exact path='/webhooks/create' component={CreateWebhookPage} />
+                                            <Route exact path='/webhooks/update/:id' component={UpdateWebhookPage} />
+                                            <Route exact path='/invitations' component={InvitationsPage} />
+                                            <Route exact path='/organization' component={OrganizationPage} />
+                                            <Route exact path='/requests' component={RequestsPage} />
+                                            <Route exact path='/profile' component={ProfilePageComponent} />
+                                            { routesToRender }
+                                            <Route
+                                                path='/models'
+                                            >
+                                                <Switch>
+                                                    <Route exact path='/models' component={ModelsPageComponent} />
+                                                </Switch>
+                                            </Route>
+                                            <Redirect
+                                                push
+                                                to={{
+                                                    pathname: queryParams.get('next') ?? '/tasks',
+                                                    search: authParams ? new URLSearchParams(authParams).toString() : '',
+                                                }}
+                                            />
+                                        </Switch>
+                                        <ExportDatasetModal />
+                                        <ExportBackupModal />
+                                        <ImportDatasetModal />
+                                        <ImportBackupModal />
+                                        <InvitationWatcher />
+                                        <UploadFileStatusModal />
+                                        <SelectCSUpdatingSchemeModal />
+                                        <SelectOrganizationModal />
+                                        <BulkProgress />
+                                        {this.state.githubStarPromptVisible &&
+                                            growth.data ? (
+                                                <GitHubStarModal
+                                                    open
+                                                    onShown={this.markGitHubStarPromptShown}
+                                                    onSupport={this.supportCVAT}
+                                                    onClose={() => this.setState({ githubStarPromptVisible: false })}
+                                                />
+                                            ) : null}
+                                        {/* eslint-disable-next-line */}
+                                        <a id='downloadAnchor' target='_blank' style={{ display: 'none' }} download />
+                                    </Layout.Content>
+                                </Layout>
+                            </DemoGuideProvider>
                         </ShortcutsContextProvider>
                     </GlobalErrorBoundary>
                 );
