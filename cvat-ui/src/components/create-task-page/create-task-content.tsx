@@ -839,7 +839,7 @@ class CreateTaskContent extends React.PureComponent<Props & RouteComponentProps,
         }
 
         return (
-            <Col span={24}>
+            <Col span={24} data-tour='create-labels'>
                 <Text className='cvat-text-color'>Labels</Text>
                 <LabelsEditor
                     labels={labels}
@@ -859,7 +859,7 @@ class CreateTaskContent extends React.PureComponent<Props & RouteComponentProps,
 
         return (
             <>
-                <Col span={24}>
+                <Col span={24} data-tour='create-files'>
                     <Text type='danger'>* </Text>
                     <Text className='cvat-text-color'>Select files</Text>
                     <FileManagerComponent
