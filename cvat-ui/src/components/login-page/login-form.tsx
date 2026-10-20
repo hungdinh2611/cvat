@@ -181,6 +181,22 @@ function LoginFormComponent(props: Props): JSX.Element {
                     ))
                 }
             </Form>
+            {renderBasicLoginComponent && (
+                <Row justify='center' className='cvat-login-test-account'>
+                    <Button
+                        type='link'
+                        className='cvat-login-test-account-button'
+                        loading={fetching}
+                        disabled={fetching}
+                        htmlType='button'
+                        onClick={() => {
+                            onSubmit({ credential: 'test_demo', password: 'P116-Demo-Test-2026!' });
+                        }}
+                    >
+                        Login with test account
+                    </Button>
+                </Row>
+            )}
         </div>
     );
 }

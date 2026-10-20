@@ -172,6 +172,7 @@ $social-google-background: #4286f5;
 }
 
 .cvat-login-form-wrapper {
+    position: relative;
     border-radius: $border-radius-base;
     background: $background-color-1;
     padding: $grid-unit-size * 6;
@@ -219,6 +220,32 @@ $social-google-background: #4286f5;
 .cvat-login-form-extended {
     .ant-form-item:first-child {
         margin-bottom: 0;
+    }
+}
+
+.cvat-login-test-account {
+    position: absolute;
+    right: $grid-unit-size * 6;
+    bottom: $grid-unit-size * 6;
+    left: $grid-unit-size * 6;
+
+    .cvat-login-test-account-button {
+        height: auto;
+        padding: 0;
+        color: black;
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 2px;
+
+        > span {
+            text-decoration: inherit;
+            text-underline-offset: inherit;
+        }
+
+        &:not(:disabled):hover {
+            color: $action-button-color-2;
+        }
     }
 }
 
