@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { GuideStep, Journey } from './types';
+import view2d from './view-2d';
 
 const journeys: Record<Journey, GuideStep[]> = {
-    view2d: [], view3d: [], create2d: [], create3d: [],
+    view2d, view3d: [], create2d: [], create3d: [],
 };
 
 export default journeys;

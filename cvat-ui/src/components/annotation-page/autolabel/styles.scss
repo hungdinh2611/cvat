@@ -4,6 +4,18 @@
 
 @import 'base';
 
+.cvat-ai-box-control:not(.cvat-disabled-canvas-control) {
+    color: #1677ff;
+    background: #e6f4ff;
+    box-shadow: inset 0 0 0 1px #91caff;
+
+    &.cvat-active-canvas-control,
+    &:hover {
+        color: #0958d9;
+        background: #bae0ff !important;
+    }
+}
+
 .cvat-autolabel-drawer {
     .ant-drawer-body {
         padding: $grid-unit-size * 2;

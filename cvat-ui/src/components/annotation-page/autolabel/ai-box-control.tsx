@@ -14,8 +14,9 @@ import Popover from 'antd/lib/popover';
 import Select from 'antd/lib/select';
 import Tag from 'antd/lib/tag';
 import Text from 'antd/lib/typography/Text';
-import { AimOutlined, BorderOuterOutlined, ScanOutlined } from '@ant-design/icons';
+import { AimOutlined, BorderOuterOutlined, OpenAIOutlined } from '@ant-design/icons';
 
+import { GUIDE_UI_EVENT, GUIDE_RESTORE_EVENT, GuidePanel } from 'components/demo-guide/types';
 import { CombinedState } from 'reducers';
 import { Canvas, RectDrawingMethod } from 'cvat-canvas-wrapper';
 import {
@@ -81,6 +82,25 @@ function AIBoxControl({ canvasInstance, disabled }: Props): JSX.Element {
     const frame = useSelector((state: CombinedState) => state.annotation.player.frame.number);
     const [vmJob, setVmJob] = useState<VmJob | null>(null);
     const [open, setOpen] = useState(false);
+    const guideSnapshot = useRef<boolean | null>(null);
+    useEffect(() => {
+        const guide = (event: Event): void => {
+            if (guideSnapshot.current === null) guideSnapshot.current = open;
+            setOpen((event as CustomEvent<GuidePanel>).detail === 'ai-box');
+        };
+        const restore = (): void => {
+            if (guideSnapshot.current !== null) {
+                setOpen(guideSnapshot.current);
+                guideSnapshot.current = null;
+            }
+        };
+        window.addEventListener(GUIDE_UI_EVENT, guide);
+        window.addEventListener(GUIDE_RESTORE_EVENT, restore);
+        return () => {
+            window.removeEventListener(GUIDE_UI_EVENT, guide);
+            window.removeEventListener(GUIDE_RESTORE_EVENT, restore);
+        };
+    }, [open]);
     const [labelID, setLabelID] = useState<number | null>(null);
     const [hint, setHint] = useState('');
     const [history, setHistory] = useState<Exchange[]>([]);
@@ -214,6 +234,7 @@ function AIBoxControl({ canvasInstance, disabled }: Props): JSX.Element {
                 onChange={(event) => setHint(event.target.value)}
                 maxLength={500}
                 autoSize={{ minRows: 2, maxRows: 4 }}
+                data-tour='ai-box-hint'
                 placeholder={T.aiBoxHintPlaceholder}
                 onKeyDown={(event) => event.stopPropagation()}
             />
@@ -258,7 +279,7 @@ function AIBoxControl({ canvasInstance, disabled }: Props): JSX.Element {
         <Alert type='info' showIcon message={T.aiBoxUnavailable} className='cvat-ai-box-popover-content' />
     );
 
-    if (disabled) return <ScanOutlined className='cvat-ai-box-control cvat-disabled-canvas-control' />;
+    if (disabled) return <OpenAIOutlined className='cvat-ai-box-control cvat-disabled-canvas-control' />;
 
     return (
         <Popover
@@ -270,7 +291,7 @@ function AIBoxControl({ canvasInstance, disabled }: Props): JSX.Element {
             overlayClassName='cvat-ai-box-popover'
         >
             <CVATTooltip title={T.aiBoxTooltip} placement='right'>
-                <ScanOutlined
+                <OpenAIOutlined
                     className={`cvat-ai-box-control${drawing ? ' cvat-active-canvas-control' : ''}`}
                     onClick={() => {
                         if (drawing) canvasInstance.draw({ enabled: false });

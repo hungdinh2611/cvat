@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import './styles.scss';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import Alert from 'antd/lib/alert';
 import Badge from 'antd/lib/badge';
@@ -17,6 +17,7 @@ import Spin from 'antd/lib/spin';
 import Tabs from 'antd/lib/tabs';
 import { ReloadOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons';
 
+import { GUIDE_UI_EVENT, GUIDE_RESTORE_EVENT, GuidePanel } from 'components/demo-guide/types';
 import { CombinedState } from 'reducers';
 import { DimensionType } from 'cvat-core-wrapper';
 import CVATTooltip from 'components/common/cvat-tooltip';
@@ -50,6 +51,30 @@ function AutoLabelPanel({ cvatJobID }: { cvatJobID: number }): JSX.Element {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settingsRevision, setSettingsRevision] = useState(0);
     const [privacyOpen, setPrivacyOpen] = useState(false);
+    const guideSnapshot = useRef<{ open: boolean; tab: string; settingsOpen: boolean } | null>(null);
+    useEffect(() => {
+        const guide = (event: Event): void => {
+            if (!guideSnapshot.current) guideSnapshot.current = { open, tab, settingsOpen };
+            const panel = (event as CustomEvent<GuidePanel>).detail;
+            setOpen(['run', 'review', 'vlm', 'settings'].includes(panel));
+            setSettingsOpen(panel === 'settings');
+            if (['run', 'review', 'vlm'].includes(panel)) setTab(panel);
+        };
+        const restore = (): void => {
+            if (guideSnapshot.current) {
+                setOpen(guideSnapshot.current.open);
+                setTab(guideSnapshot.current.tab);
+                setSettingsOpen(guideSnapshot.current.settingsOpen);
+                guideSnapshot.current = null;
+            }
+        };
+        window.addEventListener(GUIDE_UI_EVENT, guide);
+        window.addEventListener(GUIDE_RESTORE_EVENT, restore);
+        return () => {
+            window.removeEventListener(GUIDE_UI_EVENT, guide);
+            window.removeEventListener(GUIDE_RESTORE_EVENT, restore);
+        };
+    }, [open, tab, settingsOpen]);
     const state = useAutoLabelJob(cvatJobID);
     const {
         capabilities, job, error, loading, syncState, onResultJob, reload, replaceJob, syncNow,
@@ -88,7 +113,7 @@ function AutoLabelPanel({ cvatJobID }: { cvatJobID: number }): JSX.Element {
                     items={[
                         {
                             key: 'run',
-                            label: T.tabRun,
+                            label: <span data-tour='autolabel-run-tab'>{T.tabRun}</span>,
                             children: job ? (
                                 <JobProgress
                                     job={job}
@@ -102,13 +127,13 @@ function AutoLabelPanel({ cvatJobID }: { cvatJobID: number }): JSX.Element {
                         },
                         {
                             key: 'review',
-                            label: T.tabReview,
+                            label: <span data-tour='autolabel-review-tab'>{T.tabReview}</span>,
                             disabled: !job,
                             children: job ? <ReviewTab job={job} onResultJob={onResultJob} /> : noRun,
                         },
                         {
                             key: 'vlm',
-                            label: T.tabVlm,
+                            label: <span data-tour='autolabel-vlm-tab'>{T.tabVlm}</span>,
                             disabled: !job,
                             children: job ? (
                                 <VlmTab
