@@ -39,7 +39,7 @@ export default function CreateTaskPage(props: Props): JSX.Element {
     return (
         <Row justify='center' align='top' className='cvat-create-work-form-wrapper'>
             <Col md={20} lg={16} xl={14} xxl={9}>
-                <Text className='cvat-title'>{audio ? 'Create a new audio task' : 'Create a new task'}</Text>
+                <Text className='cvat-title' data-tour='create-task-heading'>{audio ? 'Create a new audio task' : 'Create a new task'}</Text>
                 {!audio && !many && !projectId && (
                     <div className='cvat-create-workflow-choice' data-tour='create-workflow'>
                         <Radio.Group

@@ -9,6 +9,7 @@ const view2d: GuideStep[] = [
     {
         route: DEMO_2D,
         target: '.cvat-canvas-container',
+        placement: 'bottom',
         title: 'A video, already labelled by AI',
         description: 'This existing nuScenes demo contains rectangle tracks. Each track follows an object across frames. AI output is a starting point: a human still checks the labels.',
     },
@@ -21,7 +22,7 @@ const view2d: GuideStep[] = [
     },
     {
         route: DEMO_2D,
-        target: '.cvat-objects-sidebar-sider',
+        target: '.cvat-objects-sidebar',
         title: 'Tracks, labels and visibility',
         placement: 'left',
         description: 'The Objects sidebar lists tracks and their labels. Select an object to inspect it; visibility and lock controls help isolate crowded scenes. Edits are only kept after Save.',
@@ -35,7 +36,7 @@ const view2d: GuideStep[] = [
     },
     {
         route: DEMO_2D,
-        target: '.cvat-autolabel-drawer .ant-drawer-body',
+        target: '.cvat-autolabel-drawer .ant-tabs-content-holder',
         panel: 'run',
         title: 'Run and monitor AutoLabel',
         placement: 'left',
@@ -43,7 +44,7 @@ const view2d: GuideStep[] = [
     },
     {
         route: DEMO_2D,
-        target: '[data-tour="autolabel-review-tab"]',
+        target: '.cvat-autolabel-drawer .ant-tabs-tab:has([data-tour="autolabel-review-tab"])',
         panel: 'run',
         title: 'Review the AI output',
         placement: 'left',
@@ -51,7 +52,7 @@ const view2d: GuideStep[] = [
     },
     {
         route: DEMO_2D,
-        target: '[data-tour="autolabel-vlm-tab"]',
+        target: '.cvat-autolabel-drawer .ant-tabs-tab:has([data-tour="autolabel-vlm-tab"])',
         panel: 'run',
         title: 'VLM suggestions are separate',
         placement: 'left',

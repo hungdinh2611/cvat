@@ -45,7 +45,7 @@ const view3d: GuideStep[] = [
     },
     {
         route: DEMO_3D,
-        target: '.cvat-objects-sidebar-sider',
+        target: '.cvat-objects-sidebar',
         placement: 'left',
         title: 'Inspect the objects and review status',
         description: 'The sidebar lists labels and cuboid tracks. Select an object and expand Details to inspect its attributes, including review_status when present. Pending AI output is not automatically approved training data.',

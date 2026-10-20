@@ -240,7 +240,7 @@ test('waits for both the requested job and a visible target after navigation', a
         await app.act(async () => new Promise((resolve) => setTimeout(resolve, 180)));
         assert.equal(Boolean(app.rootElement.querySelector('.ant-tour')), false, 'hidden targets are not ready');
         marker.style.display = 'block';
-        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 180)));
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
         assert.ok(app.rootElement.querySelector('.ant-tour'));
     } finally { await app.cleanup(); }
 });
@@ -253,5 +253,39 @@ test('does not leave unsaved annotations when starting a journey', async () => {
         await app.act(async () => start.click());
         assert.deepEqual(app.pushed(), []);
         assert.match(app.rootElement.textContent, /Save or undo/);
+    } finally { await app.cleanup(); }
+});
+
+
+test('keeps the highlight closed until an animated target stops moving', async () => {
+    const app = setup({ steps: [{ route: '/tasks', target: '.moving-target', title: 'Moving panel' }] });
+    try {
+        const marker = app.dom.window.document.createElement('div');
+        marker.className = 'moving-target';
+        let left = 300;
+        marker.getBoundingClientRect = () => ({ x: left, y: 10, width: 200, height: 120 });
+        app.dom.window.document.body.append(marker);
+        await app.render();
+        await app.act(async () => app.rootElement.querySelector('button[aria-label="Explore 2D results"]').click());
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 120)));
+        left = 200;
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 120)));
+        left = 100;
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 120)));
+        assert.equal(Boolean(app.rootElement.querySelector('.ant-tour')), false, 'do not measure a sliding drawer early');
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
+        assert.ok(app.rootElement.querySelector('.ant-tour'));
+    } finally { await app.cleanup(); }
+});
+
+
+test('unmounts the previous annotation editor before switching demo jobs', async () => {
+    const app = setup({ initialRoute: '/tasks/23/jobs/19', steps: [{ route: '/tasks/22/jobs/18', title: '3D' }] });
+    try {
+        await app.render();
+        await app.act(async () => app.rootElement.querySelector('button[aria-label="Explore 2D results"]').click());
+        assert.deepEqual(app.pushed(), ['/tasks']);
+        await app.act(async () => new Promise((resolve) => setTimeout(resolve, 120)));
+        assert.deepEqual(app.pushed(), ['/tasks', '/tasks/22/jobs/18']);
     } finally { await app.cleanup(); }
 });

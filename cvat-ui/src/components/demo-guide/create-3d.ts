@@ -22,7 +22,7 @@ const create3d: GuideStep[] = [
     },
     {
         route: AUTO,
-        target: '[data-tour="create-3d-form"]',
+        target: '[data-tour="create-3d-form"] > .ant-alert',
         title: 'Preview the AutoLabel 3D path',
         description: 'This is the real native-dataset form, in a protected tour preview. In normal use, it uploads to P-116, runs Detect or imports existing annotations, then links you to the generated CVAT task. The guide will not upload or start a job.',
     },

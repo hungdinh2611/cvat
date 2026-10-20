@@ -27,3 +27,24 @@
         grid-template-columns: 1fr;
     }
 }
+
+.cvat-demo-guide-loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 8px 0;
+}
+
+.cvat-demo-guide-preparing .ant-modal-footer {
+    margin-top: 16px;
+}
+
+.cvat-demo-tour.ant-tour {
+    width: 400px;
+    max-width: calc(100vw - 32px);
+}
+
+.ant-tour-mask.cvat-demo-tour .ant-tour-placeholder-animated {
+    transition: none;
+}

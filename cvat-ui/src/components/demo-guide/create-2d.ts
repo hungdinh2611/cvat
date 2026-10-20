@@ -9,7 +9,7 @@ const CREATE = '/tasks/create';
 const create2d: GuideStep[] = [
     {
         route: CREATE,
-        target: '.cvat-create-task-content',
+        target: '[data-tour="create-task-heading"]',
         title: 'Create a standard CVAT video task',
         description: 'This is the real CVAT task form. Standard CVAT tasks support both 2D videos/images and correctly structured 3D point-cloud archives. For this 2D journey, you would choose a video. We will not select a file or submit.',
     },
@@ -46,7 +46,7 @@ const create2d: GuideStep[] = [
     },
     {
         route: DEMO_2D,
-        target: '.cvat-autolabel-drawer .ant-drawer-body',
+        target: '.cvat-autolabel-drawer .ant-tabs-content-holder',
         panel: 'run',
         title: 'Next: run AutoLabel inside the job',
         placement: 'left',
