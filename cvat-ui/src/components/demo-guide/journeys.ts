@@ -5,9 +5,10 @@ import { GuideStep, Journey } from './types';
 import view2d from './view-2d';
 import view3d from './view-3d';
 import create2d from './create-2d';
+import create3d from './create-3d';
 
 const journeys: Record<Journey, GuideStep[]> = {
-    view2d, view3d, create2d, create3d: [],
+    view2d, view3d, create2d, create3d,
 };
 
 export default journeys;

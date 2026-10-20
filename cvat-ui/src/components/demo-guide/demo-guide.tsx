@@ -84,7 +84,15 @@ export default function DemoGuideProvider({ children }: { children: React.ReactN
     useEffect(() => {
         if (!active) return undefined;
         const block = (event: Event): void => {
-            if ((event.target as Element)?.closest?.('.ant-tour, .cvat-demo-guide-dialog')) return;
+            if ((event.target as Element)?.closest?.('.ant-tour, .cvat-demo-guide-dialog')) {
+                // Keep keyboard input in the guide from reaching canvas-wide shortcuts.
+                if (event.type === 'keydown') {
+                    const key = event as KeyboardEvent;
+                    event.stopImmediatePropagation();
+                    if (key.ctrlKey || key.metaKey || key.altKey) event.preventDefault();
+                }
+                return;
+            }
             event.preventDefault();
             event.stopImmediatePropagation();
         };
